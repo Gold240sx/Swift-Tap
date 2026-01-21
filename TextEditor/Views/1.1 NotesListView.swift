@@ -1,27 +1,15 @@
 //
-//----------------------------------------------
-// Original project: RichNotes
-// by  Stewart Lynch on 2025-10-30
+//  NotesListView.swift
+//  TextEditor
 //
-// Follow me on Mastodon: https://iosdev.space/@StewartLynch
-// Follow me on Threads: https://www.threads.net/@stewartlynch
-// Follow me on Bluesky: https://bsky.app/profile/stewartlynch.bsky.social
-// Follow me on X: https://x.com/StewartLynch
-// Follow me on LinkedIn: https://linkedin.com/in/StewartLynch
-// Email: slynch@createchsol.com
-// Subscribe on YouTube: https://youTube.com/@StewartLynch
-// Buy me a ko-fi:  https://ko-fi.com/StewartLynch
-//----------------------------------------------
-// Copyright © 2025 CreaTECH Solutions. All rights reserved.
-
 
 import SwiftUI
 import SwiftData
 
 struct NotesListView: View {
     @Query private var notes: [RichTextNote]
-    @State private var numLines = 1.0
     @Environment(\.modelContext) var context
+
     init(sortByCreation: Bool, filterCategory: String) {
         let sortDescriptors: [SortDescriptor<RichTextNote>] = if sortByCreation {
             [SortDescriptor(\RichTextNote.createdOn, order: .reverse)]
@@ -35,42 +23,28 @@ struct NotesListView: View {
             let predicate = #Predicate<RichTextNote> { note in
                 note.category == nil
             }
-            _notes = Query(filter:predicate, sort: sortDescriptors)
+            _notes = Query(filter: predicate, sort: sortDescriptors)
         default:
             let predicate = #Predicate<RichTextNote> { note in
                 note.category?.name.contains(filterCategory) == true
             }
-            _notes = Query(filter:predicate, sort: sortDescriptors)
+            _notes = Query(filter: predicate, sort: sortDescriptors)
         }
     }
+
     var body: some View {
-        if !notes.isEmpty {
-            VStack {
+        Group {
+            if notes.isEmpty {
+                ContentUnavailableView {
+                    Label("No Notes", systemImage: "note.text")
+                } description: {
+                    Text("Tap the compose button to create your first note.")
+                }
+            } else {
                 List {
                     ForEach(notes) { note in
-                        NavigationLink (value: note ){
-                            VStack(alignment: .leading) {
-                                HStack {
-                                    if let category = note.category {
-                                        Circle()
-                                            .fill(Color(hex: category.hexColor)!)
-                                            .frame(width: 15)
-                                    } else {
-                                        Circle()
-                                            .fill(.background)
-                                            .frame(width: 15)
-                                    }
-                                    Text(note.category?.name ?? Category.uncategorized)
-                                }
-                                Text(note.previewText.isEmpty ? (note.text.characters.isEmpty ? "" : String(note.text.characters)) : note.previewText)
-                                    .lineLimit(Int(numLines))
-                                VStack(alignment: .trailing){
-                                    Text(note.createdOn, style: .date)
-                                    Text("Updated: \(Text(note.updatedOn, style: .date)) \(Text(note.updatedOn, style: .time))")
-                                }
-                                .font(.caption.italic())
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                            }
+                        NavigationLink(value: note) {
+                            NoteRowView(note: note)
                         }
                     }
                     .onDelete { indices in
@@ -80,19 +54,77 @@ struct NotesListView: View {
                         try? context.save()
                     }
                 }
-                .listStyle(.plain)
-                VStack {
-                    Slider(value: $numLines, in: 1...10)
-                    Text("Displaying ^[\(Int(numLines)) lines](inflect: true)")
-                }
-                .padding()
+                #if os(iOS)
+                .listStyle(.insetGrouped)
+                #else
+                .listStyle(.inset)
+                #endif
             }
-        } else {
-            ContentUnavailableView("Create your first note", systemImage: "square.and.pencil")
         }
     }
 }
 
+// MARK: - Note Row View
+
+struct NoteRowView: View {
+    let note: RichTextNote
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Title/Preview
+            Text(noteTitle)
+                .font(.headline)
+                .lineLimit(1)
+
+            // Preview text
+            if !previewBody.isEmpty {
+                Text(previewBody)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            // Footer: Category + Date
+            HStack {
+                if let category = note.category {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(hex: category.hexColor) ?? .gray)
+                            .frame(width: 8, height: 8)
+                        Text(category.name)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(note.updatedOn, style: .relative)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var noteTitle: String {
+        let text = note.previewText.isEmpty ? String(note.text.characters) : note.previewText
+        let firstLine = text.components(separatedBy: .newlines).first ?? ""
+        return firstLine.isEmpty ? "Untitled" : String(firstLine.prefix(50))
+    }
+
+    private var previewBody: String {
+        let text = note.previewText.isEmpty ? String(note.text.characters) : note.previewText
+        let lines = text.components(separatedBy: .newlines)
+        if lines.count > 1 {
+            return lines.dropFirst().joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        }
+        return ""
+    }
+}
+
 #Preview(traits: .mockData) {
-    NotesListView(sortByCreation: true, filterCategory: Category.all)
+    NavigationStack {
+        NotesListView(sortByCreation: true, filterCategory: Category.all)
+    }
 }

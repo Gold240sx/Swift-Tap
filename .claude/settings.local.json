@@ -7,7 +7,8 @@
       "Bash(git commit:*)",
       "Bash(git branch:*)",
       "Bash(git remote add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git -C /Users/michaelmartell/Desktop/ShippoTest/Text-Editor/TextEditor status --short)"
     ]
   }
 }

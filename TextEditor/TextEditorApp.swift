@@ -6,7 +6,7 @@ struct TextEditorApp: App {
     let container: ModelContainer
     
     init() {
-        let schema = Schema([Category.self, RichTextNote.self, TableData.self, TableCell.self, NoteBlock.self])
+        let schema = Schema([Category.self, RichTextNote.self, TableData.self, TableCell.self, NoteBlock.self, AccordionData.self, CodeBlockData.self])
         let config = ModelConfiguration()
         do {
             container = try ModelContainer(for: schema, configurations: config)

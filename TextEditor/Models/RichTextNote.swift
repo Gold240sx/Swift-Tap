@@ -30,7 +30,10 @@ class RichTextNote {
     
     @Relationship(deleteRule: .cascade)
     var blocks: [NoteBlock]
-    
+
+    /// Stores the last used code language for new code blocks (defaults to "swift")
+    var lastUsedCodeLanguage: String = "swift"
+
     var previewText: String {
         blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
             .compactMap { block in
