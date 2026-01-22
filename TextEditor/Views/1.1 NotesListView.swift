@@ -108,6 +108,9 @@ struct NoteRowView: View {
     }
 
     private var noteTitle: String {
+        if !note.title.isEmpty {
+            return note.title
+        }
         let text = note.previewText.isEmpty ? String(note.text.characters) : note.previewText
         let firstLine = text.components(separatedBy: .newlines).first ?? ""
         return firstLine.isEmpty ? "Untitled" : String(firstLine.prefix(50))

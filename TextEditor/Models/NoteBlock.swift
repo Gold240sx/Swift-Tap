@@ -23,13 +23,16 @@ class NoteBlock {
     @Relationship(deleteRule: .cascade)
     var codeBlock: CodeBlockData?
 
+    @Relationship(deleteRule: .cascade)
+    var imageData: ImageData?
+
     /// If this block is nested inside an accordion, this points to the parent accordion
     var parentAccordion: AccordionData?
 
     var typeString: String
 
     enum BlockType: String, Codable {
-        case text, table, accordion, code
+        case text, table, accordion, code, image
     }
 
     var type: BlockType {
@@ -37,13 +40,14 @@ class NoteBlock {
         set { typeString = newValue.rawValue }
     }
 
-    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, type: BlockType = .text) {
+    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, imageData: ImageData? = nil, type: BlockType = .text) {
         self.id = id
         self.orderIndex = orderIndex
         self.text = text
         self.table = table
         self.accordion = accordion
         self.codeBlock = codeBlock
+        self.imageData = imageData
         self.typeString = type.rawValue
     }
 }

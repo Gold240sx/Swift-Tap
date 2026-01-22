@@ -21,7 +21,7 @@ import Combine
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let noteBlock = UTType(exportedAs: "com.shippotracker.noteblock")
+    static let noteBlock = UTType(exportedAs: "com.stewartlynch.noteblock")
 }
 
 struct NotesEditorView: View {
@@ -48,6 +48,15 @@ struct NotesEditorView: View {
     private var mainEditorContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
+                // Document Title
+                TextField("Page Title", text: $note.title, axis: .vertical)
+                    .font(.system(size: 34, weight: .bold))
+                    .textFieldStyle(.plain)
+                    .padding(.bottom, 8)
+                    .onChange(of: note.title) {
+                        note.updatedOn = Date.now
+                    }
+
                 ForEach(note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
                     blockRowView(for: block)
                         .padding(4)
@@ -183,36 +192,55 @@ struct NotesEditorView: View {
                     Image(systemName: "textformat.alt")
                 }
 
-                Button {
-                    showTablePicker.toggle()
+                Menu {
+                    Button {
+                        activeElementPopover = .table
+                    } label: {
+                        Label("Table", systemImage: "tablecells")
+                    }
+                    
+                    Button {
+                        activeElementPopover = .accordion
+                    } label: {
+                        Label("Accordion", systemImage: "list.bullet.indent")
+                    }
+                    
+                    Button {
+                        activeElementPopover = .image
+                    } label: {
+                        Label("Image", systemImage: "photo")
+                    }
+                    
+                    Button {
+                        insertCodeBlock()
+                    } label: {
+                        Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
                 } label: {
-                    Image(systemName: "tablecells")
+                    Image(systemName: "plus")
                 }
-                .popover(isPresented: $showTablePicker) {
-                    TableGridPicker(selectedRows: .constant(0), selectedCols: .constant(0)) { rows, cols in
-                        insertTable(rows: rows, cols: cols)
-                        showTablePicker = false
+                .popover(item: $activeElementPopover) { item in
+                    switch item {
+                    case .table:
+                        TableGridPicker(selectedRows: .constant(0), selectedCols: .constant(0)) { rows, cols in
+                            insertTable(rows: rows, cols: cols)
+                            activeElementPopover = nil
+                        }
+                    case .accordion:
+                        AccordionPicker { level in
+                            insertAccordion(level: level)
+                            activeElementPopover = nil
+                        }
+                    case .image:
+                        ImageInsertSheet(isPresented: Binding(
+                            get: { activeElementPopover == .image },
+                            set: { if !$0 { activeElementPopover = nil } }
+                        )) { url, alt, width, height in
+                            insertImage(url: url, alt: alt, width: width, height: height)
+                            activeElementPopover = nil
+                        }
                     }
                 }
-
-                Button {
-                    showAccordionPicker.toggle()
-                } label: {
-                    Image(systemName: "list.bullet.indent")
-                }
-                .popover(isPresented: $showAccordionPicker) {
-                    AccordionPicker { level in
-                        insertAccordion(level: level)
-                        showAccordionPicker = false
-                    }
-                }
-
-                Button {
-                    insertCodeBlock()
-                } label: {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                }
-                .help("Insert code block")
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
@@ -283,48 +311,44 @@ struct NotesEditorView: View {
     @ViewBuilder
     private var categorySelectionView: some View {
         HStack {
-            if categories.isEmpty {
-                Text("No Categories")
-            } else {
-                Picker("Category", selection: $selectedCategory) {
-                    Text(Category.uncategorized).tag(Category.uncategorized)
-                    ForEach(categories) { category in
-                        Text(category.name).tag(category.name)
-                    }
+            Picker("Category", selection: $selectedCategory) {
+                Text(Category.uncategorized).tag(Category.uncategorized)
+                ForEach(categories) { category in
+                    Text(category.name).tag(category.name)
                 }
-                .buttonStyle(.bordered)
-                .onChange(of: selectedCategory) {
-                    if let category = categories.first(where: {$0.name == selectedCategory}) {
-                        note.category = category
-                    } else {
-                        note.category = nil
-                    }
-                    try? context.save()
-                }
-                Button {
-                    editCategories.toggle()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                }
-                .buttonStyle(.borderedProminent)
-                .clipShape(.circle)
-                .tint(note.category != nil ? Color(hex: note.category!.hexColor)! : .accentColor)
-                #if os(iOS)
-                .sheet(isPresented: $editCategories, onDismiss: {
-                    selectedCategory = note.category?.name ?? Category.uncategorized
-                }) {
-                    CategoriesView()
-                }
-                #else
-                .popover(isPresented: $editCategories) {
-                    CategoriesView()
-                        .frame(width: 400, height: 500)
-                        .onDisappear {
-                            selectedCategory = note.category?.name ?? Category.uncategorized
-                        }
-                }
-                #endif
             }
+            .buttonStyle(.bordered)
+            .onChange(of: selectedCategory) {
+                if let category = categories.first(where: {$0.name == selectedCategory}) {
+                    note.category = category
+                } else {
+                    note.category = nil
+                }
+                try? context.save()
+            }
+            Button {
+                editCategories.toggle()
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .buttonStyle(.borderedProminent)
+            .clipShape(.circle)
+            .tint(note.category != nil ? Color(hex: note.category!.hexColor)! : .accentColor)
+            #if os(iOS)
+            .sheet(isPresented: $editCategories, onDismiss: {
+                selectedCategory = note.category?.name ?? Category.uncategorized
+            }) {
+                CategoriesView()
+            }
+            #else
+            .popover(isPresented: $editCategories) {
+                CategoriesView()
+                    .frame(width: 400, height: 500)
+                    .onDisappear {
+                        selectedCategory = note.category?.name ?? Category.uncategorized
+                    }
+            }
+            #endif
         }
         .onAppear {
             if let category = note.category {
@@ -462,6 +486,13 @@ struct NotesEditorView: View {
                             Label("Delete Code Block", systemImage: "trash")
                         }
                     }
+                } else if let imageData = block.imageData {
+                    ImageBlockView(
+                        imageData: imageData,
+                        onDelete: {
+                            removeBlock(block)
+                        }
+                    )
                 }
             }
         }
@@ -474,36 +505,77 @@ struct NotesEditorView: View {
         }
     }
 
-    @State private var showTablePicker = false
-    @State private var showAccordionPicker = false
+    @State private var activeElementPopover: ElementPopover?
+
+    enum ElementPopover: Identifiable {
+        case table
+        case accordion
+        case image
+        
+        var id: Self { self }
+    }
+
+    private func findBlock(id: UUID) -> NoteBlock? {
+        // BFS or DFS search
+        // Since we don't have a flat list, we search recursively
+        // A stack-based iterative search would be safer for deep nesting, but recursive is easier for now.
+        return findBlockRecursive(in: note.blocks, id: id)
+    }
+    
+    private func findBlockRecursive(in blocks: [NoteBlock], id: UUID) -> NoteBlock? {
+        for block in blocks {
+            if block.id == id { return block }
+            if let accordion = block.accordion {
+                if let found = findBlockRecursive(in: accordion.contentBlocks, id: id) {
+                    return found
+                }
+            }
+        }
+        return nil
+    }
 
     private func insertCodeBlock() {
+        if let focusedID = focusedBlockID,
+           let focusedBlock = findBlock(id: focusedID),
+           let parentAccordion = focusedBlock.parentAccordion {
+            insertCodeBlockInAccordion(parentAccordion)
+            return
+        }
+        
+        // Root insertion logic (existing)
         let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
-
+ 
         let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
         var targetOrderIndex = sortedBlocks.count
-
+ 
         if let focusedID = focusedBlockID,
            let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
-            targetOrderIndex = focusedBlock.orderIndex + 1
+             targetOrderIndex = focusedBlock.orderIndex + 1
         }
-
+ 
         // Shift subsequent blocks
         for block in note.blocks where block.orderIndex >= targetOrderIndex {
-            block.orderIndex += 1
+             block.orderIndex += 1
         }
-
+ 
         let codeBlockItem = NoteBlock(orderIndex: targetOrderIndex, codeBlock: newCodeBlock, type: .code)
         note.blocks.append(codeBlockItem)
         context.insert(codeBlockItem)
-
+ 
         ensureTrailingTextBlock()
         try? context.save()
     }
-
+ 
     private func insertTable(rows: Int, cols: Int) {
+        if let focusedID = focusedBlockID,
+           let focusedBlock = findBlock(id: focusedID),
+           let parentAccordion = focusedBlock.parentAccordion {
+            insertTableInAccordion(parentAccordion, rows: rows, cols: cols)
+            return
+        }
+
         let newTable = TableData(rowCount: rows, columnCount: cols)
         context.insert(newTable)
 
@@ -648,9 +720,15 @@ struct NotesEditorView: View {
     }
 
     private func insertAccordion(level: AccordionData.HeadingLevel) {
+        if let focusedID = focusedBlockID,
+           let focusedBlock = findBlock(id: focusedID),
+           let parentAccordion = focusedBlock.parentAccordion {
+            insertAccordionInAccordion(parentAccordion, level: level)
+            return
+        }
+
         let newAccordion = AccordionData(level: level)
         context.insert(newAccordion)
-
         // Create initial text block inside the accordion
         let initialTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
         initialTextBlock.parentAccordion = newAccordion
@@ -983,6 +1061,60 @@ struct NotesEditorView: View {
             }
         }
     }
+
+    private func insertImage(url: String, alt: String?, width: Double?, height: Double?) {
+        if let focusedID = focusedBlockID,
+           let focusedBlock = findBlock(id: focusedID),
+           let parentAccordion = focusedBlock.parentAccordion {
+            insertImageInAccordion(parentAccordion, url: url, alt: alt, width: width, height: height)
+            return
+        }
+        
+        // Root insertion
+        let newImage = ImageData(urlString: url, width: width, height: height, altText: alt)
+        context.insert(newImage)
+        
+        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+        var targetOrderIndex = sortedBlocks.count
+
+        if let focusedID = focusedBlockID,
+           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
+            targetOrderIndex = focusedBlock.orderIndex + 1
+        }
+        
+        // Shift subsequent blocks
+        for block in note.blocks where block.orderIndex >= targetOrderIndex {
+            block.orderIndex += 1
+        }
+        
+        let imageBlock = NoteBlock(orderIndex: targetOrderIndex, imageData: newImage, type: .image)
+        note.blocks.append(imageBlock)
+        context.insert(imageBlock)
+        
+        ensureTrailingTextBlock()
+        try? context.save()
+    }
+    
+    private func insertImageInAccordion(_ accordion: AccordionData, url: String, alt: String?, width: Double?, height: Double?) {
+        let newImage = ImageData(urlString: url, width: width, height: height, altText: alt)
+        context.insert(newImage)
+        
+        let sortedBlocks = accordion.contentBlocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+        let targetOrderIndex = sortedBlocks.count
+        
+        // Shift subsequent blocks
+        for block in accordion.contentBlocks where block.orderIndex >= targetOrderIndex {
+            block.orderIndex += 1
+        }
+        
+        let imageBlock = NoteBlock(orderIndex: targetOrderIndex, imageData: newImage, type: .image)
+        imageBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(imageBlock)
+        context.insert(imageBlock)
+        
+        ensureTrailingTextBlockInAccordion(accordion)
+        try? context.save()
+    }
 }
 
 // MARK: - Block Drop Delegate
@@ -1054,6 +1186,7 @@ struct BlockDropDelegate: DropDelegate {
         }
     }
 }
+
 
 
 #Preview(traits: .mockData) {

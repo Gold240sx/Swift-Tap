@@ -148,50 +148,54 @@ struct TableEditorView: View {
     
     @ViewBuilder
     private var headerSection: some View {
-        HStack {
-            if isEditing {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        isEditing = false
+        if !table.showTitle && !isHovering && !isEditing && !showSettings && !showJSONPopover {
+            EmptyView()
+        } else {
+            HStack {
+                if isEditing {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            isEditing = false
+                        }
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .green)
+                            .font(.title2)
                     }
-                } label: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .green)
-                        .font(.title2)
-                }
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        isEditing = true
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            isEditing = true
+                        }
+                    } label: {
+                        Label("Edit", systemImage: "pencil.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Color.accentColor)
+                            .font(.title3)
                     }
-                } label: {
-                    Label("Edit", systemImage: "pencil.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, Color.accentColor)
-                        .font(.title3)
+                    .buttonStyle(.plain)
+                    .opacity(isHovering ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: isHovering)
                 }
-                .buttonStyle(.plain)
-                .opacity(isHovering ? 1 : 0)
-                .animation(.easeInOut(duration: 0.2), value: isHovering)
+                
+                if table.showTitle {
+                    TextField("Table Name", text: $table.title)
+                        .font(.headline)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Spacer()
+                }
+                
+                settingsButton
             }
-            
-            if table.showTitle {
-                TextField("Table Name", text: $table.title)
-                    .font(.headline)
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.center)
-            } else {
-                Spacer()
-            }
-            
-            settingsButton
+            .padding(.horizontal, isEditing ? 0 : 4) // Adjust padding based on mode
+            .padding(.bottom, 4)
+            .contentShape(Rectangle()) // Ensure entire header area is hoverable
+            .frame(minHeight: 32)
         }
-        .padding(.horizontal, isEditing ? 0 : 4) // Adjust padding based on mode
-        .padding(.bottom, 4)
-        .contentShape(Rectangle()) // Ensure entire header area is hoverable
-        .frame(minHeight: 32)
     }
     
     @ViewBuilder

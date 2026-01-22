@@ -82,58 +82,6 @@ struct AccordionBlockView: View {
             .opacity(isHovering ? 1 : 0)
             .padding(.top, 4)
 
-            // Add content buttons (shows on hover)
-            HStack(spacing: 4) {
-                Button {
-                    showTablePicker.toggle()
-                } label: {
-                    Image(systemName: "tablecells")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
-                        .background(Color.gray.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showTablePicker) {
-                    TableGridPicker(selectedRows: .constant(0), selectedCols: .constant(0)) { rows, cols in
-                        onInsertTable(accordion, rows, cols)
-                        showTablePicker = false
-                    }
-                }
-
-                Button {
-                    showAccordionPicker.toggle()
-                } label: {
-                    Image(systemName: "list.bullet.indent")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
-                        .background(Color.gray.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showAccordionPicker) {
-                    AccordionPicker { level in
-                        onInsertAccordion(accordion, level)
-                        showAccordionPicker = false
-                    }
-                }
-
-                Button {
-                    onInsertCodeBlock(accordion)
-                } label: {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
-                        .background(Color.gray.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.plain)
-            }
-            .opacity(isHovering ? 1 : 0)
-            .padding(.top, 4)
 
             // Expand/collapse button on right
             Button {
@@ -325,6 +273,20 @@ struct AccordionBlockView: View {
                             onRemoveBlock(block)
                         } label: {
                             Label("Delete Code Block", systemImage: "trash")
+                        }
+                    }
+                } else if let imageData = block.imageData {
+                    ImageBlockView(
+                        imageData: imageData,
+                        onDelete: {
+                            onRemoveBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onRemoveBlock(block)
+                        } label: {
+                            Label("Delete Image", systemImage: "trash")
                         }
                     }
                 }

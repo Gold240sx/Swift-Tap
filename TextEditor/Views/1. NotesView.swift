@@ -41,12 +41,24 @@ struct NotesView: View {
                                 Button {
                                     sortByCreation = true
                                 } label: {
-                                    Label("Date Created", systemImage: sortByCreation ? "checkmark" : "")
+                                    HStack {
+                                        Text("Date Created")
+                                        if sortByCreation {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
                                 }
                                 Button {
                                     sortByCreation = false
                                 } label: {
-                                    Label("Last Modified", systemImage: !sortByCreation ? "checkmark" : "")
+                                    HStack {
+                                        Text("Last Modified")
+                                        if !sortByCreation {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
                                 }
                             }
 
@@ -54,18 +66,36 @@ struct NotesView: View {
                                 Button {
                                     filterCategory = Category.all
                                 } label: {
-                                    Label("All Notes", systemImage: filterCategory == Category.all ? "checkmark" : "")
+                                    HStack {
+                                        Text("All Notes")
+                                        if filterCategory == Category.all {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
                                 }
                                 Button {
                                     filterCategory = Category.uncategorized
                                 } label: {
-                                    Label("Uncategorized", systemImage: filterCategory == Category.uncategorized ? "checkmark" : "")
+                                    HStack {
+                                        Text("Uncategorized")
+                                        if filterCategory == Category.uncategorized {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
                                 }
                                 ForEach(categories) { category in
                                     Button {
                                         filterCategory = category.name
                                     } label: {
-                                        Label(category.name, systemImage: filterCategory == category.name ? "checkmark" : "")
+                                        HStack {
+                                            Text(category.name)
+                                            if filterCategory == category.name {
+                                                Spacer()
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
                                     }
                                 }
                             }

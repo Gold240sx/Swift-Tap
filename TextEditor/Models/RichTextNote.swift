@@ -23,6 +23,7 @@ class RichTextNote {
     var text: AttributedString
     var createdOn: Date
     var updatedOn: Date
+    var title: String = ""
     var category: Category?
     
     @Relationship(deleteRule: .cascade)

@@ -7,65 +7,47 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E6CC3A3D2F2183BC005A84EB /* SDWebImageSVGCoder in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A3C2F2183BC005A84EB /* SDWebImageSVGCoder */; };
-		E6CC3A402F2183D2005A84EB /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A3F2F2183D2005A84EB /* SDWebImageSwiftUI */; };
-		E6CC3A432F2183EA005A84EB /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A422F2183EA005A84EB /* Highlightr */; };
+		E616DFE92F14A9A900A2B3CE /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = E616DF6F2F14B00000A2B3CE /* SDWebImageSwiftUI */; };
+		E616DFEA2F14A9A900A2B3CE /* SDWebImageSVGCoder in Frameworks */ = {isa = PBXBuildFile; productRef = E616DF712F14B00000A2B3CE /* SDWebImageSVGCoder */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		E6C8EB062F2034A600AA1B97 /* TextEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TextEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E616DF592F149AC400A2B3CE /* MarkdownPro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MarkdownPro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		E6CC3A3A2F218213005A84EB /* Exceptions for "TextEditor" folder in "TextEditor" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Examples/MarkdownPro,
-			);
-			target = E6C8EB052F2034A600AA1B97 /* TextEditor */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		E6C8EB082F2034A600AA1B97 /* TextEditor */ = {
+		E616DF5B2F149AC400A2B3CE /* MarkdownPro */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				E6CC3A3A2F218213005A84EB /* Exceptions for "TextEditor" folder in "TextEditor" target */,
-			);
-			explicitFolders = (
-				Examples/MarkdownPro,
-			);
-			path = TextEditor;
+			path = MarkdownPro;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		E6C8EB032F2034A600AA1B97 /* Frameworks */ = {
+		E616DF562F149AC400A2B3CE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E6CC3A402F2183D2005A84EB /* SDWebImageSwiftUI in Frameworks */,
-				E6CC3A432F2183EA005A84EB /* Highlightr in Frameworks */,
-				E6CC3A3D2F2183BC005A84EB /* SDWebImageSVGCoder in Frameworks */,
+				E616DFEA2F14A9A900A2B3CE /* SDWebImageSVGCoder in Frameworks */,
+				E616DFE92F14A9A900A2B3CE /* SDWebImageSwiftUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		E6C8EAFD2F2034A600AA1B97 = {
+		E616DF502F149AC400A2B3CE = {
 			isa = PBXGroup;
 			children = (
-				E6C8EB082F2034A600AA1B97 /* TextEditor */,
-				E6C8EB072F2034A600AA1B97 /* Products */,
+				E616DF5B2F149AC400A2B3CE /* MarkdownPro */,
+				E616DF5A2F149AC400A2B3CE /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		E6C8EB072F2034A600AA1B97 /* Products */ = {
+		E616DF5A2F149AC400A2B3CE /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E6C8EB062F2034A600AA1B97 /* TextEditor.app */,
+				E616DF592F149AC400A2B3CE /* MarkdownPro.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,72 +55,70 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E6C8EB052F2034A600AA1B97 /* TextEditor */ = {
+		E616DF582F149AC400A2B3CE /* MarkdownPro */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E6C8EB112F2034A800AA1B97 /* Build configuration list for PBXNativeTarget "TextEditor" */;
+			buildConfigurationList = E616DF642F149AC700A2B3CE /* Build configuration list for PBXNativeTarget "MarkdownPro" */;
 			buildPhases = (
-				E6C8EB022F2034A600AA1B97 /* Sources */,
-				E6C8EB032F2034A600AA1B97 /* Frameworks */,
-				E6C8EB042F2034A600AA1B97 /* Resources */,
+				E616DF552F149AC400A2B3CE /* Sources */,
+				E616DF562F149AC400A2B3CE /* Frameworks */,
+				E616DF572F149AC400A2B3CE /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				E6C8EB082F2034A600AA1B97 /* TextEditor */,
+				E616DF5B2F149AC400A2B3CE /* MarkdownPro */,
 			);
-			name = TextEditor;
+			name = MarkdownPro;
 			packageProductDependencies = (
-				E6CC3A3C2F2183BC005A84EB /* SDWebImageSVGCoder */,
-				E6CC3A3F2F2183D2005A84EB /* SDWebImageSwiftUI */,
-				E6CC3A422F2183EA005A84EB /* Highlightr */,
+				E616DF6F2F14B00000A2B3CE /* SDWebImageSwiftUI */,
+				E616DF712F14B00000A2B3CE /* SDWebImageSVGCoder */,
 			);
-			productName = TextEditor;
-			productReference = E6C8EB062F2034A600AA1B97 /* TextEditor.app */;
+			productName = MarkdownPro;
+			productReference = E616DF592F149AC400A2B3CE /* MarkdownPro.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		E6C8EAFE2F2034A600AA1B97 /* Project object */ = {
+		E616DF512F149AC400A2B3CE /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
-					E6C8EB052F2034A600AA1B97 = {
+					E616DF582F149AC400A2B3CE = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
-			buildConfigurationList = E6C8EB012F2034A600AA1B97 /* Build configuration list for PBXProject "TextEditor" */;
+			buildConfigurationList = E616DF542F149AC400A2B3CE /* Build configuration list for PBXProject "MarkdownPro" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = E6C8EAFD2F2034A600AA1B97;
+			mainGroup = E616DF502F149AC400A2B3CE;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */,
-				E6CC3A3E2F2183D2005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
-				E6CC3A412F2183EA005A84EB /* XCRemoteSwiftPackageReference "Highlightr" */,
+				E616DF6D2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
+				E616DF6E2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = E6C8EB072F2034A600AA1B97 /* Products */;
+			productRefGroup = E616DF5A2F149AC400A2B3CE /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				E6C8EB052F2034A600AA1B97 /* TextEditor */,
+				E616DF582F149AC400A2B3CE /* MarkdownPro */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		E6C8EB042F2034A600AA1B97 /* Resources */ = {
+		E616DF572F149AC400A2B3CE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -148,7 +128,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		E6C8EB022F2034A600AA1B97 /* Sources */ = {
+		E616DF552F149AC400A2B3CE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -158,7 +138,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		E6C8EB0F2F2034A800AA1B97 /* Debug */ = {
+		E616DF622F149AC700A2B3CE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -220,7 +200,7 @@
 			};
 			name = Debug;
 		};
-		E6C8EB102F2034A800AA1B97 /* Release */ = {
+		E616DF632F149AC700A2B3CE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -274,27 +254,18 @@
 			};
 			name = Release;
 		};
-		E6C8EB122F2034A800AA1B97 /* Debug */ = {
+		E616DF652F149AC700A2B3CE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MarkdownPro/MarkdownPro.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3M7PED79H5;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
-				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -312,7 +283,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.michaelMartell.bookmarks.TextEditor;
+				PRODUCT_BUNDLE_IDENTIFIER = com.michaelMartell.bookmarks.MarkdownPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -328,27 +299,18 @@
 			};
 			name = Debug;
 		};
-		E6C8EB132F2034A800AA1B97 /* Release */ = {
+		E616DF662F149AC700A2B3CE /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MarkdownPro/MarkdownPro.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3M7PED79H5;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
-				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -366,7 +328,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.michaelMartell.bookmarks.TextEditor;
+				PRODUCT_BUNDLE_IDENTIFIER = com.michaelMartell.bookmarks.MarkdownPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -385,20 +347,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		E6C8EB012F2034A600AA1B97 /* Build configuration list for PBXProject "TextEditor" */ = {
+		E616DF542F149AC400A2B3CE /* Build configuration list for PBXProject "MarkdownPro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E6C8EB0F2F2034A800AA1B97 /* Debug */,
-				E6C8EB102F2034A800AA1B97 /* Release */,
+				E616DF622F149AC700A2B3CE /* Debug */,
+				E616DF632F149AC700A2B3CE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E6C8EB112F2034A800AA1B97 /* Build configuration list for PBXNativeTarget "TextEditor" */ = {
+		E616DF642F149AC700A2B3CE /* Build configuration list for PBXNativeTarget "MarkdownPro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E6C8EB122F2034A800AA1B97 /* Debug */,
-				E6C8EB132F2034A800AA1B97 /* Release */,
+				E616DF652F149AC700A2B3CE /* Debug */,
+				E616DF662F149AC700A2B3CE /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -406,49 +368,36 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/SDWebImage/SDWebImageSVGCoder.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.8.0;
-			};
-		};
-		E6CC3A3E2F2183D2005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */ = {
+		E616DF6D2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SDWebImage/SDWebImageSwiftUI.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.1.4;
+				minimumVersion = 3.0.0;
 			};
 		};
-		E6CC3A412F2183EA005A84EB /* XCRemoteSwiftPackageReference "Highlightr" */ = {
+		E616DF6E2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/raspu/Highlightr";
+			repositoryURL = "https://github.com/SDWebImage/SDWebImageSVGCoder.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.3.0;
+				minimumVersion = 1.7.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		E6CC3A3C2F2183BC005A84EB /* SDWebImageSVGCoder */ = {
+		E616DF6F2F14B00000A2B3CE /* SDWebImageSwiftUI */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */;
-			productName = SDWebImageSVGCoder;
-		};
-		E6CC3A3F2F2183D2005A84EB /* SDWebImageSwiftUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E6CC3A3E2F2183D2005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */;
+			package = E616DF6D2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */;
 			productName = SDWebImageSwiftUI;
 		};
-		E6CC3A422F2183EA005A84EB /* Highlightr */ = {
+		E616DF712F14B00000A2B3CE /* SDWebImageSVGCoder */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E6CC3A412F2183EA005A84EB /* XCRemoteSwiftPackageReference "Highlightr" */;
-			productName = Highlightr;
+			package = E616DF6E2F14B00000A2B3CE /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */;
+			productName = SDWebImageSVGCoder;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = E6C8EAFE2F2034A600AA1B97 /* Project object */;
+	rootObject = E616DF512F149AC400A2B3CE /* Project object */;
 }
