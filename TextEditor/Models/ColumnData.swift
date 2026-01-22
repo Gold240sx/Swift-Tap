@@ -13,7 +13,7 @@ class ColumnData {
     var id: UUID
     var columnCount: Int
 
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \Column.parentColumnData)
     var columns: [Column]
 
     init(columnCount: Int = 2) {

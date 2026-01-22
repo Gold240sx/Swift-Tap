@@ -112,6 +112,7 @@ struct CategoriesView: View {
                         action = .new
                     } label: {
                         Image(systemName: "plus")
+                            .foregroundStyle(.white)
                     }
                 }
             }

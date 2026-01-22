@@ -35,20 +35,22 @@ struct ColumnBlockView: View {
 
     var body: some View {
         let sortedColumns = columnData.columns.sorted(by: { $0.orderIndex < $1.orderIndex })
-        let totalRatio = sortedColumns.reduce(0) { $0 + $1.widthRatio }
+        let totalRatio = sortedColumns.reduce(0.0) { $0 + $1.widthRatio }
         
         let numberOfColumns = CGFloat(columnData.columns.count)
         let totalPadding = numberOfColumns * 16 // 8 leading + 8 trailing per column
-        let totalSpacing = (numberOfColumns - 1) * 8 // 8px for each resize handle
-        let availableWidth = max(0, viewWidth - totalSpacing - totalPadding)
+        let availableWidth = max(0, viewWidth - totalPadding)
+        
+        // Debug width calculations
+        let _ = print("ColumnBlockView rendering \(columnData.columns.count) columns. ViewWidth: \(viewWidth), AvailableWidth: \(availableWidth), TotalRatio: \(totalRatio)")
         
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(sortedColumns.enumerated()), id: \.element.id) { index, column in
-                let columnWidth = max(0, (column.widthRatio / totalRatio) * availableWidth)
-                
                 ColumnContentView(
                     column: column,
-                    width: viewWidth > 0 ? columnWidth : nil,
+                    totalRatio: totalRatio,
+                    availableWidth: availableWidth,
+                    viewWidth: viewWidth,
                     selections: $selections,
                     focusState: focusState,
                     onRemoveBlock: onRemoveBlock,
@@ -59,15 +61,6 @@ struct ColumnBlockView: View {
                     blockHeights: $blockHeights,
                     note: note
                 )
-                
-                if index < sortedColumns.count - 1 {
-                    ResizeHandleView(
-                        leftCol: sortedColumns[index],
-                        rightCol: sortedColumns[index + 1],
-                        totalPixelWidth: availableWidth,
-                        totalRatio: totalRatio
-                    )
-                }
             }
         }
         // Force equal height for all columns in the HStack
@@ -106,84 +99,21 @@ struct ColumnBlockView: View {
                 isHovering = hovering
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 100) // Ensure it has some minimum height
         .measureWidth { width in
             viewWidth = width
+            print("ColumnBlockView measured width: \(width)")
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
-struct ResizeHandleView: View {
-    var leftCol: Column
-    var rightCol: Column
-    var totalPixelWidth: CGFloat
-    var totalRatio: Double
-    
-    @Environment(\.modelContext) var context
-    @State private var initialLeftRatio: Double = 0
-    @State private var initialRightRatio: Double = 0
-    @State private var isDragging = false
-    
-    var body: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .contentShape(Rectangle())
-            .frame(width: 8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 2, height: 24)
-            )
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        guard totalPixelWidth > 0, totalRatio > 0 else { return }
-                        
-                        if !isDragging {
-                             isDragging = true
-                             initialLeftRatio = leftCol.widthRatio
-                             initialRightRatio = rightCol.widthRatio
-                        }
-                        
-                        let delta = value.translation.width
-                        let ratioDelta = (delta / totalPixelWidth) * totalRatio
-                        
-                        let minRatio = 0.1 * totalRatio
-                        let maxTotal = initialLeftRatio + initialRightRatio
-                        
-                        var newLeft = initialLeftRatio + ratioDelta
-                        var newRight = initialRightRatio - ratioDelta
-                        
-                        // Constrain
-                        if newLeft < minRatio {
-                            newLeft = minRatio
-                            newRight = maxTotal - minRatio
-                        }
-                        if newRight < minRatio {
-                             newRight = minRatio
-                             newLeft = maxTotal - minRatio
-                        }
-                        
-                        leftCol.widthRatio = newLeft
-                        rightCol.widthRatio = newRight
-                    }
-                    .onEnded { _ in
-                         isDragging = false
-                         try? context.save()
-                    }
-            )
-            .onHover { hovering in
-                #if os(macOS)
-                if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                #endif
-            }
-    }
-}
 
 // MARK: - Column Content View
 struct ColumnContentView: View {
     @Bindable var column: Column
-    let width: CGFloat?
+    let totalRatio: Double
+    let availableWidth: CGFloat
+    let viewWidth: CGFloat
     @Binding var selections: [UUID: AttributedTextSelection]
     var focusState: FocusState<UUID?>.Binding
     
@@ -202,6 +132,11 @@ struct ColumnContentView: View {
     @State private var isHovering = false
 
     var body: some View {
+        let columnWidth = max(0, (column.widthRatio / totalRatio) * availableWidth)
+        
+        // Debug print to track width changes
+        let _ = print("Column \(column.id) - Ratio: \(column.widthRatio), AvailableWidth: \(availableWidth), Calculated Width: \(columnWidth)")
+        
         VStack(alignment: .leading, spacing: 8) {
             ForEach(column.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
                  NestedBlockContainer(
@@ -233,7 +168,7 @@ struct ColumnContentView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity) // Fill available space
-        .frame(width: width) // Apply fixed width if calculated (not nil)
+        .frame(width: viewWidth > 0 ? columnWidth : nil) // Apply fixed width if calculated (not nil)
         .padding(8)
         .frame(maxHeight: .infinity) // Then expand height to fill container
         .background(Color.gray.opacity(0.04))
@@ -266,6 +201,7 @@ struct ColumnContentView: View {
                 .foregroundStyle(.tertiary)
                 .frame(width: 16, height: 20)
                 .padding(.top, block.type == .text ? 8 : 4) // Align with text content (approx 8px inset) or standard blocks
+                .contentShape(Rectangle()) // Ensure the entire frame is interactive
                 .onDrag {
                     let provider = NSItemProvider(object: block.id.uuidString as NSString)
                     provider.suggestedName = "Nested Block"
@@ -293,7 +229,21 @@ struct ColumnContentView: View {
                         .padding()
                         .background(Color.secondary.opacity(0.2))
                         .cornerRadius(8)
+                    } else {
+                        HStack {
+                            Image(systemName: "square.grid.2x2.fill")
+                                .font(.system(size: 10))
+                            Text(block.type == .text ? "Text Block" : block.type == .list ? "List" : block.type == .code ? "Code Block" : "Block")
+                                .font(.caption)
+                        }
+                        .padding(8)
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(8)
                     }
+                }
+                .onTapGesture {
+                    // Focus the block when drag handle is tapped
+                    focusState.wrappedValue = block.id
                 }
             
             Group {
@@ -308,6 +258,13 @@ struct ColumnContentView: View {
                         onDelete: { onRemoveBlock(block) },
                         onMerge: { onMergeNestedBlock(block, column) },
                         isNested: true
+                    )
+                } else if let listData = block.listData {
+                    ListBlockView(
+                        listData: listData,
+                        selections: $selections,
+                        focusState: focusState,
+                        onDelete: { onRemoveBlock(block) }
                     )
                 } else if let table = block.table {
                     TableEditorView(table: table, note: nil, onDelete: { onRemoveBlock(block) })
@@ -336,6 +293,7 @@ struct ColumnContentView: View {
             }
         }
     }
+
 }
 
 // MARK: - Nested Block Container

@@ -2,7 +2,7 @@
 //  NoteBlock.swift
 //  TextEditor
 //
-//  Represents a single block of content (Text, Table, Accordion, or Code) in a Note.
+//  Represents a single block of content (Text, Table, Accordion, Code, List, etc.) in a Note.
 //
 
 import Foundation
@@ -29,16 +29,19 @@ class NoteBlock {
     @Relationship(deleteRule: .cascade)
     var columnData: ColumnData?
 
+    @Relationship(deleteRule: .cascade)
+    var listData: ListData?
+
     /// If this block is nested inside an accordion, this points to the parent accordion
     var parentAccordion: AccordionData?
-    
+
     /// If this block is nested inside a column, this points to the parent column
     var parentColumn: Column?
 
     var typeString: String
 
     enum BlockType: String, Codable {
-        case text, table, accordion, code, image, columns
+        case text, table, accordion, code, image, columns, list
     }
 
     var type: BlockType {
@@ -46,7 +49,7 @@ class NoteBlock {
         set { typeString = newValue.rawValue }
     }
 
-    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, imageData: ImageData? = nil, columnData: ColumnData? = nil, type: BlockType = .text) {
+    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, imageData: ImageData? = nil, columnData: ColumnData? = nil, listData: ListData? = nil, type: BlockType = .text) {
         self.id = id
         self.orderIndex = orderIndex
         self.text = text
@@ -55,6 +58,7 @@ class NoteBlock {
         self.codeBlock = codeBlock
         self.imageData = imageData
         self.columnData = columnData
+        self.listData = listData
         self.typeString = type.rawValue
     }
 }

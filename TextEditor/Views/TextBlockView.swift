@@ -14,9 +14,9 @@ struct TextBlockView: View {
     var onDelete: () -> Void = {}
     var onMerge: () -> Void = {}
     var onExtractSelection: () -> Void = {}
-    
-    var isNested: Bool = false // Default to standard behavior
-    
+
+    var isNested: Bool = false
+
     @State private var eventMonitor: Any?
 
     var body: some View {
@@ -31,7 +31,6 @@ struct TextBlockView: View {
                     font: .systemFont(ofSize: 13)
                 )
             } else {
-                // Legacy implementation for main editor consistency
                 ZStack(alignment: .topLeading) {
                     // Hidden text for height calculation
                     Text((block.text ?? "") + "\n")
@@ -40,7 +39,7 @@ struct TextBlockView: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     TextEditor(text: Binding(
                         get: { block.text ?? "" },
                         set: { block.text = $0 }
@@ -63,9 +62,6 @@ struct TextBlockView: View {
                 eventMonitor = nil
             }
         }
-        .onChange(of: focusState.wrappedValue) {
-            // Re-setup monitor to be sure updates capture correct context if needed
-        }
         .contextMenu {
             if !isSelectionEmpty && !isFullSelection {
                 Button {
@@ -82,7 +78,7 @@ struct TextBlockView: View {
             }
         }
     }
-    
+
     private var isSelectionEmpty: Bool {
         guard let text = block.text else { return true }
         switch selection.indices(in: text) {
@@ -92,7 +88,7 @@ struct TextBlockView: View {
             return true
         }
     }
-    
+
     private var isFullSelection: Bool {
         guard let text = block.text else { return false }
         switch selection.indices(in: text) {
@@ -103,37 +99,32 @@ struct TextBlockView: View {
             return false
         }
     }
-    
+
     private func selectAll() {
-        // Send format independent select all
         NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
     }
-    
+
     private func setupEventMonitor() {
         if eventMonitor != nil { return }
-        
+
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Check if this block is focused
             guard focusState.wrappedValue == block.id else { return event }
-            
+
             if event.keyCode == 51 { // Delete (Backspace)
                 if let text = block.text {
-                    // If text is selected, let the system handle standard deletion
                     if !isSelectionEmpty {
                         return event
                     }
-                    
+
                     if text.characters.isEmpty {
-                        // Empty block: delete it
                         DispatchQueue.main.async {
                             onDelete()
                         }
-                        return nil // Consume event
+                        return nil
                     } else {
-                        // Check if cursor is at start
                         let indices = selection.indices(in: text)
                         var isAtStart = false
-                        
+
                         switch indices {
                         case .insertionPoint(let index):
                             if index == text.startIndex { isAtStart = true }
@@ -142,19 +133,19 @@ struct TextBlockView: View {
                                 isAtStart = true
                             }
                         @unknown default:
-                             break
+                            break
                         }
-                        
+
                         if isAtStart {
-                            // At start of non-empty block: merge with previous
                             DispatchQueue.main.async {
                                 onMerge()
                             }
-                            return nil // Consume event
+                            return nil
                         }
                     }
                 }
             }
+
             return event
         }
     }

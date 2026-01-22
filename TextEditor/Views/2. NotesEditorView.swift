@@ -25,6 +25,7 @@ extension UTType {
 }
 
 struct NotesEditorView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var note: RichTextNote
     @State private var moreEditing = false
     @Environment(\.modelContext) var context
@@ -197,66 +198,96 @@ struct NotesEditorView: View {
                         activeElementPopover = .table
                     } label: {
                         Label("Table", systemImage: "tablecells")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
                     }
                     
                     Button {
                         activeElementPopover = .accordion
                     } label: {
                         Label("Accordion", systemImage: "list.bullet.indent")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
                     }
                     
                     Button {
                         activeElementPopover = .image
                     } label: {
                         Label("Image", systemImage: "photo")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
                     }
                     
                     Button {
                         insertCodeBlock()
                     } label: {
                         Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
                     }
                     
                     Menu {
                         Button {
-                            insertColumns(count: 2)
+                            insertColumns(ratios: [0.5, 0.5])
                         } label: {
-                            Label("2 Columns", systemImage: "rectangle.split.2x1")
+                            Label("1/2 - 1/2", image: "half")
                         }
                         Button {
-                            insertColumns(count: 3)
+                            insertColumns(ratios: [0.75, 0.25])
                         } label: {
-                            Label("3 Columns", systemImage: "rectangle.split.3x1")
+                            Label("3/4 - 1/4", image: "three-quarter")
+                        }
+                        Button {
+                            insertColumns(ratios: [0.25, 0.75])
+                        } label: {
+                            Label("1/4 - 3/4", image: "one-quarter")
+                        }
+                        Button {
+                            insertColumns(ratios: [0.66, 0.33])
+                        } label: {
+                            Label("2/3 - 1/3", image: "two-third")
+                        }
+                        Button {
+                            insertColumns(ratios: [0.33, 0.66])
+                        } label: {
+                            Label("1/3 - 2/3", image: "one-third")
+                        }
+                        Button {
+                            insertColumns(ratios: [0.33, 0.33, 0.33])
+                        } label: {
+                            Label("3 Columns", image: "three-column")
                         }
                     } label: {
                         Label("Columns", systemImage: "rectangle.split.3x1")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
+                    }
+
+                    Menu {
+                        Button {
+                            insertBulletList()
+                        } label: {
+                            Label("Bullet List", systemImage: "list.bullet")
+                        }
+                        Button {
+                            insertNumberedList()
+                        } label: {
+                            Label("Numbered List", systemImage: "list.number")
+                        }
+                        Button {
+                            insertCheckboxList()
+                        } label: {
+                            Label("Checkbox List", systemImage: "checklist")
+                        }
+                    } label: {
+                        Label("Lists", systemImage: "list.bullet.indent")
                     }
 
                 } label: {
                     Image(systemName: "plus")
+                        .foregroundStyle(.white)
                 }
-                .popover(item: $activeElementPopover) { item in
-                    switch item {
-                    case .table:
-                        TableGridPicker(selectedRows: .constant(0), selectedCols: .constant(0)) { rows, cols in
-                            insertTable(rows: rows, cols: cols)
-                            activeElementPopover = nil
-                        }
-                    case .accordion:
-                        AccordionPicker { level in
-                            insertAccordion(level: level)
-                            activeElementPopover = nil
-                        }
-                    case .image:
-                        ImageInsertSheet(isPresented: Binding(
-                            get: { activeElementPopover == .image },
-                            set: { if !$0 { activeElementPopover = nil } }
-                        )) { url, alt, width, height in
-                            insertImage(url: url, alt: alt, width: width, height: height)
-                            activeElementPopover = nil
-                        }
-                    }
-                }
+                .tint(.white)
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
@@ -424,7 +455,7 @@ struct NotesEditorView: View {
                     HStack {
                         Image(systemName: "square.grid.2x2.fill")
                             .font(.system(size: 10))
-                        Text(block.type == .text ? "Text Block" : block.type == .table ? "Table" : block.type == .accordion ? "Accordion" : "Code Block")
+                        Text(block.type == .text ? "Text Block" : block.type == .list ? "List" : block.type == .table ? "Table" : block.type == .accordion ? "Accordion" : block.type == .columns ? "Columns" : "Code Block")
                             .font(.caption)
                     }
                     .padding(8)
@@ -454,6 +485,15 @@ struct NotesEditorView: View {
                         },
                         onExtractSelection: {
                             extractSelection(from: block)
+                        }
+                    )
+                } else if let listData = block.listData {
+                    ListBlockView(
+                        listData: listData,
+                        selections: $selections,
+                        focusState: $focusedBlockID,
+                        onDelete: {
+                            removeBlock(block)
                         }
                     )
                 } else if let table = block.table {
@@ -859,14 +899,16 @@ struct NotesEditorView: View {
     
     // MARK: - Column Operations
     
-    private func insertColumns(count: Int) {
+    private func insertColumns(ratios: [Double]) {
+        let count = ratios.count
+        print("Inserting \(count) columns with ratios: \(ratios)")
         let newColumnData = ColumnData(columnCount: count)
-        context.insert(newColumnData)
         
-        // Create columns
+        // Create columns and build the graph first
         for i in 0..<count {
-            let col = Column(orderIndex: i)
+            let col = Column(orderIndex: i, widthRatio: ratios[i])
             col.parentColumnData = newColumnData
+            
             // Create initial empty text block in each column
             let textBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
             textBlock.parentColumn = col
@@ -874,6 +916,10 @@ struct NotesEditorView: View {
             
             newColumnData.columns.append(col)
         }
+        
+        // Insert the root of the graph
+        context.insert(newColumnData)
+        print("Inserted ColumnData with \(newColumnData.columns.count) columns.")
         
         insertBlockAtRoot { index in
             let block = NoteBlock(orderIndex: index, columnData: newColumnData, type: .columns)
@@ -904,12 +950,7 @@ struct NotesEditorView: View {
         // We need the ID or reference of the inserted column block. `insertBlockAtRoot` doesn't return it to us easily (it returns it to the caller of the closure).
         // Let's refactor slightly. 
         // Or better: The user wants a clean place to type below.
-        // We can just find the column block we just created (focusedBlockID is inside it, so we can find parent) and insert after.
-        
-        // Actually, `insertBlockAtRoot` calculates the index.
-        // Let's piggyback? No.
-        
-        // Let's just find the column block we just made (it's the only one with this newColumnData).
+        // We can just find the column block we just created (it's the only one with this newColumnData).
         // But we explicitly set focus to inside it.
         
         // We can do this:
@@ -1304,6 +1345,38 @@ struct NotesEditorView: View {
         ensureTrailingTextBlockInAccordion(accordion)
         try? context.save()
     }
+
+    private func insertList(type: ListData.ListType) {
+        let newListData = ListData(listType: type)
+        context.insert(newListData)
+
+        // Create initial empty item
+        let initialItem = ListItem(orderIndex: 0, text: "")
+        initialItem.parentList = newListData
+        newListData.items.append(initialItem)
+        context.insert(initialItem)
+
+        insertBlockAtRoot { index in
+            let block = NoteBlock(orderIndex: index, listData: newListData, type: .list)
+            // Focus the first item
+            DispatchQueue.main.async {
+                self.focusedBlockID = initialItem.id
+            }
+            return block
+        }
+    }
+
+    private func insertBulletList() {
+        insertList(type: .bullet)
+    }
+
+    private func insertNumberedList() {
+        insertList(type: .numbered)
+    }
+
+    private func insertCheckboxList() {
+        insertList(type: .checkbox)
+    }
 }
 
 // MARK: - Block Drop Delegate
@@ -1384,3 +1457,4 @@ struct BlockDropDelegate: DropDelegate {
         NotesEditorView(note: notes.first!)
     }
 }
+

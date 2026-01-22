@@ -557,7 +557,7 @@ struct TableEditorView: View {
                         .fill(Color.accentColor.opacity(0.15))
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white)
                 }
                 .frame(width: 16)
             }
@@ -581,7 +581,7 @@ struct TableEditorView: View {
                         .fill(Color.accentColor.opacity(0.15))
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(.white)
                 }
                 .frame(height: 16)
             }

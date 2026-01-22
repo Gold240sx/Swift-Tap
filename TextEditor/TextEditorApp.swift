@@ -12,7 +12,7 @@ struct TextEditorApp: App {
         // Register SVG Coder
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         
-        let schema = Schema([Category.self, RichTextNote.self, TableData.self, TableCell.self, NoteBlock.self, AccordionData.self, CodeBlockData.self, ImageData.self])
+        let schema = Schema([Category.self, RichTextNote.self, TableData.self, TableCell.self, NoteBlock.self, AccordionData.self, CodeBlockData.self, ImageData.self, ColumnData.self, Column.self, ListData.self, ListItem.self])
         let config = ModelConfiguration()
         do {
             container = try ModelContainer(for: schema, configurations: config)

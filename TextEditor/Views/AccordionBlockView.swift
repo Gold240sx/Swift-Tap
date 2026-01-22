@@ -183,7 +183,7 @@ struct AccordionBlockView: View {
                     HStack {
                         Image(systemName: "square.grid.2x2.fill")
                             .font(.system(size: 10))
-                        Text(block.type == .text ? "Text Block" : block.type == .table ? "Table" : block.type == .accordion ? "Accordion" : "Code Block")
+                        Text(block.type == .text ? "Text Block" : block.type == .list ? "List" : block.type == .table ? "Table" : block.type == .accordion ? "Accordion" : "Code Block")
                             .font(.caption)
                     }
                     .padding(8)
@@ -218,6 +218,13 @@ struct AccordionBlockView: View {
                         onMerge: {
                             onMergeNestedBlock(block, accordion)
                         }
+                    )
+                } else if let listData = block.listData {
+                    ListBlockView(
+                        listData: listData,
+                        selections: $selections,
+                        focusState: focusState,
+                        onDelete: { onRemoveBlock(block) }
                     )
                 } else if let table = block.table {
                     TableEditorView(table: table, note: nil, onDelete: {
@@ -320,6 +327,7 @@ struct AccordionBlockView: View {
         case .h3: return 18
         }
     }
+
 }
 
 // MARK: - Nested Block Drop Delegate
