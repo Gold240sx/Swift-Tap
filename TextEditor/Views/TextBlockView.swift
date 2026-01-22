@@ -15,16 +15,45 @@ struct TextBlockView: View {
     var onMerge: () -> Void = {}
     var onExtractSelection: () -> Void = {}
     
+    var isNested: Bool = false // Default to standard behavior
+    
     @State private var eventMonitor: Any?
 
     var body: some View {
-        TextEditor(text: Binding(
-            get: { block.text ?? "" },
-            set: { block.text = $0 }
-        ), selection: $selection)
-        .focused(focusState, equals: block.id)
-        .frame(minHeight: 30)
-        .scrollDisabled(true)
+        Group {
+            if isNested {
+                MacEditorView(
+                    text: Binding(
+                        get: { block.text ?? AttributedString("") },
+                        set: { block.text = $0 }
+                    ),
+                    selection: $selection,
+                    font: .systemFont(ofSize: 13)
+                )
+            } else {
+                // Legacy implementation for main editor consistency
+                ZStack(alignment: .topLeading) {
+                    // Hidden text for height calculation
+                    Text((block.text ?? "") + "\n")
+                        .font(.body)
+                        .foregroundStyle(.clear)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    TextEditor(text: Binding(
+                        get: { block.text ?? "" },
+                        set: { block.text = $0 }
+                    ), selection: $selection)
+                    .font(.body)
+                    .scrollDisabled(true)
+                    .focused(focusState, equals: block.id)
+                    .tint(Color(red: 0.0, green: 0.3, blue: 0.8))
+                    .accentColor(Color(red: 0.0, green: 0.3, blue: 0.8))
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             setupEventMonitor()
         }
@@ -36,15 +65,15 @@ struct TextBlockView: View {
         }
         .onChange(of: focusState.wrappedValue) {
             // Re-setup monitor to be sure updates capture correct context if needed
-            // Actually simpler: just ensure monitor is active and checks focus inside
         }
         .contextMenu {
-            Button {
-                onExtractSelection()
-            } label: {
-                Label("Extract to Block", systemImage: "rectangle.badge.plus")
+            if !isSelectionEmpty && !isFullSelection {
+                Button {
+                    onExtractSelection()
+                } label: {
+                    Label("Make Text Block", systemImage: "rectangle.badge.plus")
+                }
             }
-            .disabled(isSelectionEmpty)
 
             Button {
                 selectAll()
@@ -64,6 +93,17 @@ struct TextBlockView: View {
         }
     }
     
+    private var isFullSelection: Bool {
+        guard let text = block.text else { return false }
+        switch selection.indices(in: text) {
+        case .ranges(let ranges):
+            guard let first = ranges.ranges.first else { return false }
+            return first.lowerBound == text.startIndex && first.upperBound == text.endIndex
+        default:
+            return false
+        }
+    }
+    
     private func selectAll() {
         // Send format independent select all
         NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
@@ -78,6 +118,11 @@ struct TextBlockView: View {
             
             if event.keyCode == 51 { // Delete (Backspace)
                 if let text = block.text {
+                    // If text is selected, let the system handle standard deletion
+                    if !isSelectionEmpty {
+                        return event
+                    }
+                    
                     if text.characters.isEmpty {
                         // Empty block: delete it
                         DispatchQueue.main.async {

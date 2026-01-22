@@ -216,6 +216,22 @@ struct NotesEditorView: View {
                     } label: {
                         Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
+                    
+                    Menu {
+                        Button {
+                            insertColumns(count: 2)
+                        } label: {
+                            Label("2 Columns", systemImage: "rectangle.split.2x1")
+                        }
+                        Button {
+                            insertColumns(count: 3)
+                        } label: {
+                            Label("3 Columns", systemImage: "rectangle.split.3x1")
+                        }
+                    } label: {
+                        Label("Columns", systemImage: "rectangle.split.3x1")
+                    }
+
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -303,6 +319,31 @@ struct NotesEditorView: View {
         .onChange(of: undoManager) {
             syncUndoManager()
         }
+        // Paste without cursor support
+        .onPasteCommand(of: [.text, .plainText, UTType.utf8PlainText]) { providers in
+             pasteAtEnd(providers)
+        }
+    }
+    
+    private func pasteAtEnd(_ providers: [NSItemProvider]) {
+        guard focusedBlockID == nil else { return } // Let default handler handle if focused
+        
+        for provider in providers {
+            if provider.canLoadObject(ofClass: String.self) {
+                provider.loadObject(ofClass: String.self) { string, _ in
+                    if let text = string {
+                        DispatchQueue.main.async {
+                            let sorted = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+                            let newIndex = sorted.count
+                            let newBlock = NoteBlock(orderIndex: newIndex, text: AttributedString(text), type: .text)
+                            note.blocks.append(newBlock)
+                            context.insert(newBlock)
+                            try? context.save()
+                        }
+                    }
+                }
+            }
+        }
     }
 
 
@@ -389,9 +430,10 @@ struct NotesEditorView: View {
                     .padding(8)
                     .background(Color.gray.opacity(0.2))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onDisappear {
-                        draggingBlock = nil
-                    }
+                }
+                .onTapGesture {
+                    // Select block content
+                    selectBlockContent(block)
                 }
 
             // Block content
@@ -493,6 +535,35 @@ struct NotesEditorView: View {
                             removeBlock(block)
                         }
                     )
+                } else if let columnData = block.columnData {
+                    ColumnBlockView(
+                        columnData: columnData,
+                        selections: $selections,
+                        focusState: $focusedBlockID,
+                        note: note,
+                        onDelete: {
+                            removeBlock(block)
+                        },
+                        onInsertTable: { column, rows, cols in
+                             insertTableInColumn(column, rows: rows, cols: cols)
+                        },
+                        onInsertAccordion: { column, level in
+                             insertAccordionInColumn(column, level: level)
+                        },
+                        onInsertCodeBlock: { column in
+                             insertCodeBlockInColumn(column)
+                        },
+                        onRemoveBlock: { nestedBlock in
+                             removeBlockFromColumn(nestedBlock)
+                        },
+                        onMergeNestedBlock: { nestedBlock, column in
+                             mergeNestedBlockInColumn(nestedBlock, in: column)
+                        },
+                        onDropAction: { dragged, target, edge in
+                             handleBlockDrop(dragged: dragged, target: target, edge: edge)
+                        },
+                        draggingBlock: $draggingBlock
+                    )
                 }
             }
         }
@@ -530,8 +601,89 @@ struct NotesEditorView: View {
                     return found
                 }
             }
+            if let columnData = block.columnData {
+                for column in columnData.columns {
+                    if let found = findBlockRecursive(in: column.blocks, id: id) {
+                        return found
+                    }
+                }
+            }
         }
         return nil
+    }
+
+    /// Helper to insert a block at the root level, handling text splitting if necessary
+    private func insertBlockAtRoot(_ createBlock: (Int) -> NoteBlock) {
+        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+        var targetOrderIndex = sortedBlocks.count
+
+        if let focusedID = focusedBlockID,
+           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
+
+            // Default: Insert after focused block
+            targetOrderIndex = focusedBlock.orderIndex + 1
+
+            // Attempt to split text block
+            if let selection = selections[focusedID],
+               let text = focusedBlock.text,
+               !text.characters.isEmpty {
+                
+                var splitIndex: AttributedString.Index?
+                switch selection.indices(in: text) {
+                case .insertionPoint(let index):
+                    splitIndex = index
+                case .ranges(let rangeSet):
+                    if let firstRange = rangeSet.ranges.first {
+                        splitIndex = firstRange.lowerBound
+                    }
+                }
+
+                if let index = splitIndex, index < text.endIndex {
+                     // Split text logic aligns with original insertTable implementation
+                     let prefix = text[..<index]
+                     let suffix = text[index...]
+
+                     // 1. Update focused block
+                     focusedBlock.text = AttributedString(prefix)
+
+                     // Shift all blocks >= targetOrderIndex by 2 (one for new block, one for suffix)
+                     for block in note.blocks where block.orderIndex >= targetOrderIndex {
+                         block.orderIndex += 2
+                     }
+                     
+                     // Create and insert NewBlock
+                     let newBlock = createBlock(targetOrderIndex)
+                     note.blocks.append(newBlock)
+                     context.insert(newBlock)
+                     
+                     // Create and insert SuffixBlock
+                     let suffixBlock = NoteBlock(orderIndex: targetOrderIndex + 1, text: AttributedString(suffix), type: .text)
+                     note.blocks.append(suffixBlock)
+                     context.insert(suffixBlock)
+                     
+                     try? context.save()
+                     return
+                }
+            }
+        }
+
+        // Fallback: No split, just insert at targetOrderIndex
+        for block in note.blocks where block.orderIndex >= targetOrderIndex {
+            block.orderIndex += 1
+        }
+        
+        let newBlock = createBlock(targetOrderIndex)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        
+        // Ensure trailing text block if at end
+        if targetOrderIndex == note.blocks.count - 1 {
+             let trailing = NoteBlock(orderIndex: targetOrderIndex + 1, text: "", type: .text)
+             note.blocks.append(trailing)
+             context.insert(trailing)
+        }
+        
+        try? context.save()
     }
 
     private func insertCodeBlock() {
@@ -542,30 +694,14 @@ struct NotesEditorView: View {
             return
         }
         
-        // Root insertion logic (existing)
+        // Root insertion logic
         let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
  
-        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-        var targetOrderIndex = sortedBlocks.count
- 
-        if let focusedID = focusedBlockID,
-           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
-             targetOrderIndex = focusedBlock.orderIndex + 1
+        insertBlockAtRoot { index in
+             NoteBlock(orderIndex: index, codeBlock: newCodeBlock, type: .code)
         }
- 
-        // Shift subsequent blocks
-        for block in note.blocks where block.orderIndex >= targetOrderIndex {
-             block.orderIndex += 1
-        }
- 
-        let codeBlockItem = NoteBlock(orderIndex: targetOrderIndex, codeBlock: newCodeBlock, type: .code)
-        note.blocks.append(codeBlockItem)
-        context.insert(codeBlockItem)
- 
-        ensureTrailingTextBlock()
-        try? context.save()
     }
  
     private func insertTable(rows: Int, cols: Int) {
@@ -579,87 +715,9 @@ struct NotesEditorView: View {
         let newTable = TableData(rowCount: rows, columnCount: cols)
         context.insert(newTable)
 
-        // Ensure blocks are sorted by orderIndex for correct target calculation
-        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-
-        var targetOrderIndex = sortedBlocks.count
-
-        if let focusedID = focusedBlockID,
-           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
-
-            // Default to inserting after the focused block
-            targetOrderIndex = focusedBlock.orderIndex + 1
-
-            // Attempt to split the text block
-            if let selection = selections[focusedID],
-               let text = focusedBlock.text,
-               !text.characters.isEmpty {
-
-                var splitIndex: AttributedString.Index?
-
-                // Use the Indices enum to find the split point (checking for our custom indices method)
-                switch selection.indices(in: text) {
-                case .insertionPoint(let index):
-                    splitIndex = index
-                case .ranges(let rangeSet):
-                    if let firstRange = rangeSet.ranges.first {
-                        splitIndex = firstRange.lowerBound
-                    }
-                }
-
-                if let index = splitIndex, index < text.endIndex {
-                    // Split the text
-                    let prefix = text[..<index]
-                    let suffix = text[index...]
-
-                    // 1. Update current block with prefix
-                    focusedBlock.text = AttributedString(prefix)
-
-                    // 2. Insert Table at targetOrderIndex (current + 1)
-                    // (Handled below)
-
-                    // 3. Create new block for suffix at targetOrderIndex + 1
-                    let suffixBlock = NoteBlock(orderIndex: targetOrderIndex + 1, text: AttributedString(suffix), type: .text)
-                    note.blocks.append(suffixBlock)
-                    context.insert(suffixBlock)
-
-                    // Shift all SUBSEQUENT blocks (start from one after insertion)
-                    // The table will be at targetOrderIndex.
-                    // The suffix block is at targetOrderIndex + 1.
-                    // Existing blocks at >= targetOrderIndex must shift by 2.
-
-                    for block in note.blocks where block.orderIndex >= targetOrderIndex && block.id != suffixBlock.id {
-                        block.orderIndex += 2
-                    }
-
-                    let tableBlock = NoteBlock(orderIndex: targetOrderIndex, table: newTable, type: .table)
-                    note.blocks.append(tableBlock)
-                    context.insert(tableBlock)
-
-                    try? context.save()
-                    return
-                }
-            }
+        insertBlockAtRoot { index in
+            NoteBlock(orderIndex: index, table: newTable, type: .table)
         }
-
-        // Fallback: Insert at end or after focused block (no split)
-        // Re-index subsequent blocks based on orderIndex
-        for block in note.blocks where block.orderIndex >= targetOrderIndex {
-            block.orderIndex += 1
-        }
-
-        let tableBlock = NoteBlock(orderIndex: targetOrderIndex, table: newTable, type: .table)
-        note.blocks.append(tableBlock)
-        context.insert(tableBlock)
-
-        // Ensure a text block follows if we're at the end
-        if targetOrderIndex == note.blocks.count - 1 {
-            let followingTextBlock = NoteBlock(orderIndex: targetOrderIndex + 1, text: "", type: .text)
-            note.blocks.append(followingTextBlock)
-            context.insert(followingTextBlock)
-        }
-
-        try? context.save()
     }
 
     private func extractSelection(from block: NoteBlock) {
@@ -735,28 +793,12 @@ struct NotesEditorView: View {
         newAccordion.contentBlocks.append(initialTextBlock)
         context.insert(initialTextBlock)
 
-        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-        var targetOrderIndex = sortedBlocks.count
-
-        if let focusedID = focusedBlockID,
-           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
-            targetOrderIndex = focusedBlock.orderIndex + 1
+        insertBlockAtRoot { index in
+            let block = NoteBlock(orderIndex: index, accordion: newAccordion, type: .accordion)
+            // Focus the new accordion's heading
+            focusedBlockID = newAccordion.id
+            return block
         }
-
-        // Shift subsequent blocks
-        for block in note.blocks where block.orderIndex >= targetOrderIndex {
-            block.orderIndex += 1
-        }
-
-        let accordionBlock = NoteBlock(orderIndex: targetOrderIndex, accordion: newAccordion, type: .accordion)
-        note.blocks.append(accordionBlock)
-        context.insert(accordionBlock)
-
-        // Focus the new accordion's heading
-        focusedBlockID = newAccordion.id
-
-        ensureTrailingTextBlock()
-        try? context.save()
     }
 
     // MARK: - Nested Block Operations
@@ -808,13 +850,161 @@ struct NotesEditorView: View {
         parentAccordion.contentBlocks.append(accordionBlock)
         context.insert(accordionBlock)
 
-        // Focus the new accordion's heading
+        // Focus the new nested accordion
         focusedBlockID = newAccordion.id
-
-        // Ensure trailing text block in parent accordion
+        
         ensureTrailingTextBlockInAccordion(parentAccordion)
         try? context.save()
     }
+    
+    // MARK: - Column Operations
+    
+    private func insertColumns(count: Int) {
+        let newColumnData = ColumnData(columnCount: count)
+        context.insert(newColumnData)
+        
+        // Create columns
+        for i in 0..<count {
+            let col = Column(orderIndex: i)
+            col.parentColumnData = newColumnData
+            // Create initial empty text block in each column
+            let textBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+            textBlock.parentColumn = col
+            col.blocks.append(textBlock)
+            
+            newColumnData.columns.append(col)
+        }
+        
+        insertBlockAtRoot { index in
+            let block = NoteBlock(orderIndex: index, columnData: newColumnData, type: .columns)
+            // Focus first block of first column
+            if let firstCol = newColumnData.columns.sorted(by: {$0.orderIndex < $1.orderIndex}).first,
+               let firstBlock = firstCol.blocks.first {
+                focusedBlockID = firstBlock.id
+            }
+            return block
+        }
+        
+        // Add a blank text block AFTER the columns so the user can continue typing easily
+        // We need to find where the columns were inserted and add a block after.
+        // insertBlockAtRoot inserts at 'index'. We can just append another one? 
+        // insertBlockAtRoot logic is complex (handling splits), so we should use it carefully.
+        // Actually, insertBlockAtRoot puts the column block in. 
+        // If we want a block AFTER it, we can call insertBlockAtRoot again? No, that would insert at current focus which is now INSIDE the column.
+        // We should manually append the text block after the column block.
+        
+        // Wait, insertBlockAtRoot returns the block but it's used inside a closure.
+        // Let's modify insertBlockAtRoot or just handle it here.
+        // Since we know we just inserted the column block, we can find it or just assume we are at the insertion point.
+        
+        // Simpler: Just rely on ensureTrailingTextBlock? No, that's only for the very end.
+        // If we inserted columns in the middle, we want a text block right after.
+        
+        // Let's manually insert the text block after the column block.
+        // We need the ID or reference of the inserted column block. `insertBlockAtRoot` doesn't return it to us easily (it returns it to the caller of the closure).
+        // Let's refactor slightly. 
+        // Or better: The user wants a clean place to type below.
+        // We can just find the column block we just created (focusedBlockID is inside it, so we can find parent) and insert after.
+        
+        // Actually, `insertBlockAtRoot` calculates the index.
+        // Let's piggyback? No.
+        
+        // Let's just find the column block we just made (it's the only one with this newColumnData).
+        // But we explicitly set focus to inside it.
+        
+        // We can do this:
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+             // Find the column block
+             if let colBlock = self.note.blocks.first(where: { $0.columnData?.id == newColumnData.id }) {
+                 let targetIndex = colBlock.orderIndex + 1
+                 
+                 // Shift subsequent blocks
+                 for b in self.note.blocks where b.orderIndex >= targetIndex {
+                     b.orderIndex += 1
+                 }
+                 
+                 let textBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .text)
+                 self.note.blocks.append(textBlock)
+                 self.context.insert(textBlock)
+                 try? self.context.save()
+             }
+        }
+    }
+    
+    private func insertTableInColumn(_ column: Column, rows: Int, cols: Int) {
+        let newTable = TableData(rowCount: rows, columnCount: cols)
+        context.insert(newTable)
+
+        let targetOrderIndex = column.blocks.count
+        
+        let tableBlock = NoteBlock(orderIndex: targetOrderIndex, table: newTable, type: .table)
+        tableBlock.parentColumn = column
+        column.blocks.append(tableBlock)
+        context.insert(tableBlock)
+        
+        try? context.save()
+    }
+    
+    private func insertAccordionInColumn(_ column: Column, level: AccordionData.HeadingLevel) {
+        let newAccordion = AccordionData(level: level)
+        context.insert(newAccordion)
+        
+        let initialTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+        initialTextBlock.parentAccordion = newAccordion
+        newAccordion.contentBlocks.append(initialTextBlock)
+        context.insert(initialTextBlock)
+        
+        let targetOrderIndex = column.blocks.count
+        
+        let accordionBlock = NoteBlock(orderIndex: targetOrderIndex, accordion: newAccordion, type: .accordion)
+        accordionBlock.parentColumn = column
+        column.blocks.append(accordionBlock)
+        context.insert(accordionBlock)
+        
+        focusedBlockID = newAccordion.id
+        try? context.save()
+    }
+    
+    private func insertCodeBlockInColumn(_ column: Column) {
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
+        let newCodeBlock = CodeBlockData(language: language)
+        context.insert(newCodeBlock)
+        
+        let targetOrderIndex = column.blocks.count
+        
+        let codeBlock = NoteBlock(orderIndex: targetOrderIndex, codeBlock: newCodeBlock, type: .code)
+        codeBlock.parentColumn = column
+        column.blocks.append(codeBlock)
+        context.insert(codeBlock)
+        
+        try? context.save()
+    }
+    
+    private func removeBlockFromColumn(_ block: NoteBlock) {
+        // If it's a text block and it's not the only one, or if it's empty, delete.
+        // If it's the only block, we might want to keep it empty?
+        // Actually, just delete.
+        context.delete(block)
+        try? context.save()
+    }
+    
+    private func mergeNestedBlockInColumn(_ block: NoteBlock, in column: Column) {
+        // Find previous block in column
+        let sorted = column.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+        guard let index = sorted.firstIndex(where: { $0.id == block.id }), index > 0 else { return }
+        
+        let prevBlock = sorted[index - 1]
+        
+        if prevBlock.type == .text && block.type == .text {
+            // Check content
+        }
+        
+        // Simple implementation: Just focus previous block
+        focusedBlockID = prevBlock.id
+        try? context.save()
+    }
+
+
 
     /// Insert a code block inside an accordion
     private func insertCodeBlockInAccordion(_ accordion: AccordionData) {
@@ -928,6 +1118,19 @@ struct NotesEditorView: View {
         try? context.save()
     }
 
+    private func selectBlockContent(_ block: NoteBlock) {
+        if block.type == .text {
+            // Focus the block
+            focusedBlockID = block.id
+            // Select all text
+            DispatchQueue.main.async {
+                 NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+        } else {
+             focusedBlockID = block.id
+        }
+    }
+
     // MARK: - Drag and Drop Reordering
 
     private func handleBlockDrop(dragged: NoteBlock, target: NoteBlock, edge: DropEdge) {
@@ -939,36 +1142,38 @@ struct NotesEditorView: View {
         // It could be in note.blocks OR inside an accordion.
         
         // Remove from Root
-        if dragged.parentAccordion == nil {
+        if dragged.parentAccordion == nil && dragged.parentColumn == nil {
             if let index = note.blocks.firstIndex(where: { $0.id == dragged.id }) {
                 note.blocks.remove(at: index)
-                // Re-indexing old validation not strictly needed yet as we will re-index target list
             }
         } else if let oldParent = dragged.parentAccordion {
             // Remove from old Accordion
             if let index = oldParent.contentBlocks.firstIndex(where: { $0.id == dragged.id }) {
                 oldParent.contentBlocks.remove(at: index)
             }
+        } else if let oldColumn = dragged.parentColumn {
+            // Remove from old Column
+            if let index = oldColumn.blocks.firstIndex(where: { $0.id == dragged.id }) {
+                oldColumn.blocks.remove(at: index)
+            }
         }
         
         // 2. Identify Target Destination
-        // If target block is in Root, we insert into Root.
-        // If target block is in an Accordion, we insert into that Accordion.
-        
         if let targetParent = target.parentAccordion {
-            // Target is inside an accordion -> Insert there
+            // Target is inside an accordion
             insertBlock(dragged, into: &targetParent.contentBlocks, relativeTo: target, edge: edge)
-            // Update parent relationship
             dragged.parentAccordion = targetParent
-             // Sync array back? SwifData relationships usually handle `parent = targetParent`.
-             // But we manipulated the array `contentBlocks`.
-             // We should ensure `dragged` is added to `targetParent.contentBlocks`.
-             // My helper `insertBlock` does array manipulation.
-             // We also need to set `dragged.parentAccordion = targetParent`.
+            dragged.parentColumn = nil
+        } else if let targetColumn = target.parentColumn {
+            // Target is inside a column
+            insertBlock(dragged, into: &targetColumn.blocks, relativeTo: target, edge: edge)
+            dragged.parentColumn = targetColumn
+            dragged.parentAccordion = nil
         } else {
             // Target is in Root
             insertBlock(dragged, into: &note.blocks, relativeTo: target, edge: edge)
             dragged.parentAccordion = nil
+            dragged.parentColumn = nil
         }
         
         // 3. Re-index and Save
@@ -1074,25 +1279,9 @@ struct NotesEditorView: View {
         let newImage = ImageData(urlString: url, width: width, height: height, altText: alt)
         context.insert(newImage)
         
-        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-        var targetOrderIndex = sortedBlocks.count
-
-        if let focusedID = focusedBlockID,
-           let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
-            targetOrderIndex = focusedBlock.orderIndex + 1
+        insertBlockAtRoot { index in
+             NoteBlock(orderIndex: index, imageData: newImage, type: .image)
         }
-        
-        // Shift subsequent blocks
-        for block in note.blocks where block.orderIndex >= targetOrderIndex {
-            block.orderIndex += 1
-        }
-        
-        let imageBlock = NoteBlock(orderIndex: targetOrderIndex, imageData: newImage, type: .image)
-        note.blocks.append(imageBlock)
-        context.insert(imageBlock)
-        
-        ensureTrailingTextBlock()
-        try? context.save()
     }
     
     private func insertImageInAccordion(_ accordion: AccordionData, url: String, alt: String?, width: Double?, height: Double?) {

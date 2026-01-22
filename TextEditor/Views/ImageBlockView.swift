@@ -85,6 +85,33 @@ struct ImageBlockView: View {
             } label: {
                 Label("Reset Position & Zoom", systemImage: "arrow.counterclockwise")
             }
+            
+            Divider()
+            
+            Button {
+                if let url = URL(string: imageData.urlString) {
+                    #if os(macOS)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(imageData.urlString, forType: .string)
+                    #else
+                    UIPasteboard.general.string = imageData.urlString
+                    #endif
+                }
+            } label: {
+                Label("Copy Image URL", systemImage: "link")
+            }
+            
+            Button {
+                 if let url = URL(string: imageData.urlString) {
+                     #if os(macOS)
+                     NSWorkspace.shared.open(url)
+                     #else
+                     UIApplication.shared.open(url)
+                     #endif
+                 }
+            } label: {
+                Label("Open in Browser (Download)", systemImage: "arrow.down.circle")
+            }
         }
     }
 
@@ -226,7 +253,7 @@ struct ImageBlockView: View {
                     set: { newValue in
                         dragScale = newValue
                     }
-                ), in: 0.5...3.0, step: 0.1)
+                ), in: 0.1...3.0, step: 0.1)
                 .frame(width: 120)
                 .onChange(of: dragScale) { _, newScale in
                     if let scale = newScale {

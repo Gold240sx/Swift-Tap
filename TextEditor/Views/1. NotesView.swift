@@ -105,6 +105,8 @@ struct NotesView: View {
                     }
                 }
         }
+        .tint(Color(red: 0.0, green: 0.3, blue: 0.8)) // Stronger blue for dark mode visibility
+        .accentColor(Color(red: 0.0, green: 0.3, blue: 0.8))
     }
 }
 
