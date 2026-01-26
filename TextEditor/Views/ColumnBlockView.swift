@@ -30,6 +30,10 @@ struct ColumnBlockView: View {
     var onInsertCodeBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
     var onInsertListAfter: (NoteBlock, Column, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onCopyBlock: (NoteBlock) -> Void = { _ in }
+    var onCutBlock: (NoteBlock) -> Void = { _ in }
+    var onPasteBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var copiedBlock: NoteBlock? = nil
     // Accordion-specific callbacks (for accordions nested inside columns)
     var onInsertTableInAccordion: (AccordionData, Int, Int) -> Void = { _, _, _ in }
     var onInsertAccordionInAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void = { _, _ in }
@@ -43,6 +47,9 @@ struct ColumnBlockView: View {
     var onInsertCodeBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onInsertListAfterInAccordion: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onCopyBlockInAccordion: (NoteBlock) -> Void = { _ in }
+    var onCutBlockInAccordion: (NoteBlock) -> Void = { _ in }
+    var onPasteBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
 
     @Environment(\.modelContext) var context
     @State private var isHovering = false
@@ -82,6 +89,10 @@ struct ColumnBlockView: View {
                     onInsertCodeBlockAfter: onInsertCodeBlockAfter,
                     onInsertListAfter: onInsertListAfter,
                     onInsertFilePathAfter: onInsertFilePathAfter,
+                    onCopyBlock: onCopyBlock,
+                    onCutBlock: onCutBlock,
+                    onPasteBlockAfter: onPasteBlockAfter,
+                    copiedBlock: copiedBlock,
                     onInsertTableInAccordion: onInsertTableInAccordion,
                     onInsertAccordionInAccordion: onInsertAccordionInAccordion,
                     onInsertCodeBlockInAccordion: onInsertCodeBlockInAccordion,
@@ -94,6 +105,9 @@ struct ColumnBlockView: View {
                     onInsertCodeBlockAfterInAccordion: onInsertCodeBlockAfterInAccordion,
                     onInsertListAfterInAccordion: onInsertListAfterInAccordion,
                     onInsertFilePathAfterInAccordion: onInsertFilePathAfterInAccordion,
+                    onCopyBlockInAccordion: onCopyBlockInAccordion,
+                    onCutBlockInAccordion: onCutBlockInAccordion,
+                    onPasteBlockAfterInAccordion: onPasteBlockAfterInAccordion,
                     draggingBlock: $draggingBlock,
                     dropState: $dropState,
                     blockHeights: $blockHeights,
@@ -180,6 +194,10 @@ struct ColumnContentView: View {
     var onInsertCodeBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
     var onInsertListAfter: (NoteBlock, Column, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onCopyBlock: (NoteBlock) -> Void = { _ in }
+    var onCutBlock: (NoteBlock) -> Void = { _ in }
+    var onPasteBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var copiedBlock: NoteBlock? = nil
     // Accordion-specific callbacks (for accordions nested inside columns)
     var onInsertTableInAccordion: (AccordionData, Int, Int) -> Void = { _, _, _ in }
     var onInsertAccordionInAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void = { _, _ in }
@@ -193,6 +211,9 @@ struct ColumnContentView: View {
     var onInsertCodeBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onInsertListAfterInAccordion: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onCopyBlockInAccordion: (NoteBlock) -> Void = { _ in }
+    var onCutBlockInAccordion: (NoteBlock) -> Void = { _ in }
+    var onPasteBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
 
     @Binding var draggingBlock: NoteBlock?
     @Binding var dropState: DropState?
@@ -272,7 +293,93 @@ struct ColumnContentView: View {
     
     @ViewBuilder
     private func nestedBlockView(for block: NoteBlock, in column: Column) -> some View {
-        HStack(alignment: .top, spacing: 4) {
+        NestedBlockControlsContainer(block: block) { blockHovered in
+            ColumnNestedBlockControlsContent(
+                block: block,
+                column: column,
+                blockHovered: blockHovered,
+                draggingBlock: $draggingBlock,
+                copiedBlock: copiedBlock,
+                selections: $selections,
+                focusState: focusState,
+                note: note,
+                onInsertTextBlockAfter: onInsertTextBlockAfter,
+                onInsertTableAfter: onInsertTableAfter,
+                onInsertAccordionAfter: onInsertAccordionAfter,
+                onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                onInsertListAfter: onInsertListAfter,
+                onInsertFilePathAfter: onInsertFilePathAfter,
+                onCopyBlock: onCopyBlock,
+                onCutBlock: onCutBlock,
+                onPasteBlockAfter: onPasteBlockAfter,
+                onRemoveBlock: onRemoveBlock,
+                onMergeNestedBlock: onMergeNestedBlock,
+                onDropAction: onDropAction,
+                onInsertTableInAccordion: onInsertTableInAccordion,
+                onInsertAccordionInAccordion: onInsertAccordionInAccordion,
+                onInsertCodeBlockInAccordion: onInsertCodeBlockInAccordion,
+                onRemoveBlockFromAccordion: onRemoveBlockFromAccordion,
+                onMergeNestedBlockInAccordion: onMergeNestedBlockInAccordion,
+                onDropActionInAccordion: onDropActionInAccordion,
+                onInsertTextBlockAfterInAccordion: onInsertTextBlockAfterInAccordion,
+                onInsertTableAfterInAccordion: onInsertTableAfterInAccordion,
+                onInsertAccordionAfterInAccordion: onInsertAccordionAfterInAccordion,
+                onInsertCodeBlockAfterInAccordion: onInsertCodeBlockAfterInAccordion,
+                onInsertListAfterInAccordion: onInsertListAfterInAccordion,
+                onInsertFilePathAfterInAccordion: onInsertFilePathAfterInAccordion,
+                onCopyBlockInAccordion: onCopyBlockInAccordion,
+                onCutBlockInAccordion: onCutBlockInAccordion,
+                onPasteBlockAfterInAccordion: onPasteBlockAfterInAccordion
+            )
+        }
+    }
+}
+
+// MARK: - Column Nested Block Controls Content
+
+struct ColumnNestedBlockControlsContent: View {
+    let block: NoteBlock
+    let column: Column
+    let blockHovered: Bool
+    @Binding var draggingBlock: NoteBlock?
+    let copiedBlock: NoteBlock?
+    @Binding var selections: [UUID: AttributedTextSelection]
+    var focusState: FocusState<UUID?>.Binding
+    let note: RichTextNote?
+    let onInsertTextBlockAfter: (NoteBlock, Column) -> Void
+    let onInsertTableAfter: (NoteBlock, Column, Int, Int) -> Void
+    let onInsertAccordionAfter: (NoteBlock, Column, AccordionData.HeadingLevel) -> Void
+    let onInsertCodeBlockAfter: (NoteBlock, Column) -> Void
+    let onInsertListAfter: (NoteBlock, Column, ListData.ListType) -> Void
+    let onInsertFilePathAfter: (NoteBlock, Column) -> Void
+    let onCopyBlock: (NoteBlock) -> Void
+    let onCutBlock: (NoteBlock) -> Void
+    let onPasteBlockAfter: (NoteBlock, Column) -> Void
+    let onRemoveBlock: (NoteBlock) -> Void
+    let onMergeNestedBlock: (NoteBlock, Column) -> Void
+    let onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void
+    // Accordion-specific callbacks (for accordions nested inside columns)
+    let onInsertTableInAccordion: (AccordionData, Int, Int) -> Void
+    let onInsertAccordionInAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void
+    let onInsertCodeBlockInAccordion: (AccordionData) -> Void
+    let onRemoveBlockFromAccordion: (NoteBlock) -> Void
+    let onMergeNestedBlockInAccordion: (NoteBlock, AccordionData) -> Void
+    let onDropActionInAccordion: (NoteBlock, NoteBlock, DropEdge) -> Void
+    let onInsertTextBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void
+    let onInsertTableAfterInAccordion: (NoteBlock, AccordionData, Int, Int) -> Void
+    let onInsertAccordionAfterInAccordion: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void
+    let onInsertCodeBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void
+    let onInsertListAfterInAccordion: (NoteBlock, AccordionData, ListData.ListType) -> Void
+    let onInsertFilePathAfterInAccordion: (NoteBlock, AccordionData) -> Void
+    let onCopyBlockInAccordion: (NoteBlock) -> Void
+    let onCutBlockInAccordion: (NoteBlock) -> Void
+    let onPasteBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void
+    
+    @State private var isPlusHovered = false
+    @State private var isGridHovered = false
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
             // Plus button with insert menu
             Menu {
                 Button {
@@ -328,21 +435,55 @@ struct ColumnContentView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 14, height: 20)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(blockHovered ? .primary : .tertiary)
+                    .frame(width: 20, height: 24)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .offset(y: -2)
+            .opacity(blockHovered ? (isPlusHovered ? 0.7 : 0.5) : 0.01)
+            .animation(.easeInOut(duration: 0.2), value: blockHovered)
+            .animation(.easeInOut(duration: 0.15), value: isPlusHovered)
+            .onHover { hovering in
+                isPlusHovered = hovering
+            }
 
             // Drag Handle
             Image(systemName: "square.grid.2x2.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .frame(width: 16, height: 20)
-                .offset(y: -2)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(blockHovered ? .primary : .tertiary)
+                .frame(width: 20, height: 24)
+                .contentShape(Rectangle())
+                .opacity(blockHovered ? (isGridHovered ? 0.7 : 0.5) : 0.01)
+                .animation(.easeInOut(duration: 0.2), value: blockHovered)
+                .animation(.easeInOut(duration: 0.15), value: isGridHovered)
+                .onHover { hovering in
+                    isGridHovered = hovering
+                }
                 .contentShape(Rectangle()) // Ensure the entire frame is interactive
                 .contextMenu {
+                    Button {
+                        onCopyBlock(block)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+
+                    Button {
+                        onCutBlock(block)
+                    } label: {
+                        Label("Cut", systemImage: "scissors")
+                    }
+
+                    if copiedBlock != nil {
+                        Button {
+                            onPasteBlockAfter(block, column)
+                        } label: {
+                            Label("Paste After", systemImage: "doc.on.clipboard")
+                        }
+                    }
+
+                    Divider()
+
                     Button(role: .destructive) {
                         onRemoveBlock(block)
                     } label: {
@@ -445,6 +586,12 @@ struct ColumnContentView: View {
                         onInsertCodeBlockAfter: onInsertCodeBlockAfterInAccordion,
                         onInsertListAfter: onInsertListAfterInAccordion,
                         onInsertFilePathAfter: onInsertFilePathAfterInAccordion,
+                        onCopyBlock: onCopyBlockInAccordion,
+                        onCutBlock: onCutBlockInAccordion,
+                        onPasteBlockAfter: { block, accordion in
+                            onPasteBlockAfterInAccordion(block, accordion)
+                        },
+                        copiedBlock: copiedBlock,
                         draggingBlock: $draggingBlock
                      )
                 } else if let codeBlock = block.codeBlock {
@@ -459,7 +606,6 @@ struct ColumnContentView: View {
             }
         }
     }
-
 }
 
 // MARK: - Nested Block Container

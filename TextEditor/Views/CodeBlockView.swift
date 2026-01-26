@@ -72,14 +72,30 @@ struct CodeBlockView: View {
                     .buttonStyle(.plain)
                     .help(codeBlock.showLineNumbers ? "Hide line numbers" : "Show line numbers")
 
-                    // Copy button
-                    Button {
-                        #if os(iOS)
-                        UIPasteboard.general.string = codeBlock.code
-                        #else
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(codeBlock.code, forType: .string)
-                        #endif
+                    // Copy menu with options
+                    Menu {
+                        Button {
+                            #if os(iOS)
+                            UIPasteboard.general.string = codeBlock.code
+                            #else
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(codeBlock.code, forType: .string)
+                            #endif
+                        } label: {
+                            Label("Copy Code", systemImage: "doc.on.doc")
+                        }
+                        
+                        Button {
+                            let markdown = codeBlock.markdownOutput
+                            #if os(iOS)
+                            UIPasteboard.general.string = markdown
+                            #else
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(markdown, forType: .string)
+                            #endif
+                        } label: {
+                            Label("Copy as Markdown", systemImage: "doc.text")
+                        }
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: 12))

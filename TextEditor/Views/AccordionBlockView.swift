@@ -30,6 +30,10 @@ struct AccordionBlockView: View {
     var onInsertCodeBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onInsertListAfter: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onCopyBlock: (NoteBlock) -> Void = { _ in }
+    var onCutBlock: (NoteBlock) -> Void = { _ in }
+    var onPasteBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var copiedBlock: NoteBlock? = nil
     @Environment(\.modelContext) var context
     @State private var isHovering = false
     @State private var showTablePicker = false
@@ -167,7 +171,99 @@ struct AccordionBlockView: View {
 
     @ViewBuilder
     private func nestedBlockView(for block: NoteBlock) -> some View {
-        HStack(alignment: .top, spacing: 4) {
+        NestedBlockControlsContainer(block: block) { blockHovered in
+            NestedBlockControlsContent(
+                block: block,
+                accordion: accordion,
+                blockHovered: blockHovered,
+                draggingBlock: $draggingBlock,
+                dropState: $dropState,
+                blockHeights: blockHeights,
+                selections: $selections,
+                focusState: focusState,
+                note: note,
+                copiedBlock: copiedBlock,
+                onInsertTextBlockAfter: onInsertTextBlockAfter,
+                onInsertTableAfter: onInsertTableAfter,
+                onInsertAccordionAfter: onInsertAccordionAfter,
+                onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                onInsertListAfter: onInsertListAfter,
+                onInsertFilePathAfter: onInsertFilePathAfter,
+                onCopyBlock: onCopyBlock,
+                onCutBlock: onCutBlock,
+                onPasteBlockAfter: onPasteBlockAfter,
+                onRemoveBlock: onRemoveBlock,
+                onMergeNestedBlock: onMergeNestedBlock,
+                onInsertTable: onInsertTable,
+                onInsertAccordion: onInsertAccordion,
+                onInsertCodeBlock: onInsertCodeBlock,
+                onDropAction: onDropAction
+            )
+        }
+    }
+
+    // MARK: - Bindings
+
+    private var headingBinding: Binding<AttributedString> {
+        Binding(
+            get: { accordion.heading },
+            set: { accordion.heading = $0 }
+        )
+    }
+
+    // MARK: - Heading Level Styling
+
+    private var headingFont: Font {
+        switch accordion.level {
+        case .h1: return .title
+        case .h2: return .title2
+        case .h3: return .title3
+        }
+    }
+
+    private var headingFontSize: CGFloat {
+        switch accordion.level {
+        case .h1: return 28
+        case .h2: return 22
+        case .h3: return 18
+        }
+    }
+}
+
+// MARK: - Nested Block Controls Content
+
+struct NestedBlockControlsContent: View {
+    let block: NoteBlock
+    let accordion: AccordionData
+    let blockHovered: Bool
+    @Binding var draggingBlock: NoteBlock?
+    @Binding var dropState: DropState?
+    let blockHeights: [UUID: CGFloat]
+    @Binding var selections: [UUID: AttributedTextSelection]
+    var focusState: FocusState<UUID?>.Binding
+    let note: RichTextNote?
+    let copiedBlock: NoteBlock?
+    let onInsertTextBlockAfter: (NoteBlock, AccordionData) -> Void
+    let onInsertTableAfter: (NoteBlock, AccordionData, Int, Int) -> Void
+    let onInsertAccordionAfter: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void
+    let onInsertCodeBlockAfter: (NoteBlock, AccordionData) -> Void
+    let onInsertListAfter: (NoteBlock, AccordionData, ListData.ListType) -> Void
+    let onInsertFilePathAfter: (NoteBlock, AccordionData) -> Void
+    let onCopyBlock: (NoteBlock) -> Void
+    let onCutBlock: (NoteBlock) -> Void
+    let onPasteBlockAfter: (NoteBlock, AccordionData) -> Void
+    let onRemoveBlock: (NoteBlock) -> Void
+    let onMergeNestedBlock: (NoteBlock, AccordionData) -> Void
+    let onInsertTable: (AccordionData, Int, Int) -> Void
+    let onInsertAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void
+    let onInsertCodeBlock: (AccordionData) -> Void
+    let onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void
+    
+    @State private var isPlusHovered = false
+    @State private var isGridHovered = false
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
             // Plus button with insert menu
             Menu {
                 Button {
@@ -223,20 +319,54 @@ struct AccordionBlockView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 14, height: 20)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(blockHovered ? .primary : .tertiary)
+                    .frame(width: 20, height: 24)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .offset(y: -2)
+            .opacity(blockHovered ? (isPlusHovered ? 0.7 : 0.5) : 0.01)
+            .animation(.easeInOut(duration: 0.2), value: blockHovered)
+            .animation(.easeInOut(duration: 0.15), value: isPlusHovered)
+            .onHover { hovering in
+                isPlusHovered = hovering
+            }
 
             // Drag handle icon
             Image(systemName: "square.grid.2x2.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .frame(width: 16, height: 20)
-                .offset(y: -2)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(blockHovered ? .primary : .tertiary)
+                .frame(width: 20, height: 24)
+                .contentShape(Rectangle())
+                .opacity(blockHovered ? (isGridHovered ? 0.7 : 0.5) : 0.01)
+                .animation(.easeInOut(duration: 0.2), value: blockHovered)
+                .animation(.easeInOut(duration: 0.15), value: isGridHovered)
+                .onHover { hovering in
+                    isGridHovered = hovering
+                }
                 .contextMenu {
+                    Button {
+                        onCopyBlock(block)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+
+                    Button {
+                        onCutBlock(block)
+                    } label: {
+                        Label("Cut", systemImage: "scissors")
+                    }
+
+                    if copiedBlock != nil {
+                        Button {
+                            onPasteBlockAfter(block, accordion)
+                        } label: {
+                            Label("Paste After", systemImage: "doc.on.clipboard")
+                        }
+                    }
+
+                    Divider()
+
                     Button(role: .destructive) {
                         onRemoveBlock(block)
                     } label: {
@@ -409,34 +539,6 @@ struct AccordionBlockView: View {
             }
         }
     }
-
-    // MARK: - Bindings
-
-    private var headingBinding: Binding<AttributedString> {
-        Binding(
-            get: { accordion.heading },
-            set: { accordion.heading = $0 }
-        )
-    }
-
-    // MARK: - Heading Level Styling
-
-    private var headingFont: Font {
-        switch accordion.level {
-        case .h1: return .title
-        case .h2: return .title2
-        case .h3: return .title3
-        }
-    }
-
-    private var headingFontSize: CGFloat {
-        switch accordion.level {
-        case .h1: return 28
-        case .h2: return 22
-        case .h3: return 18
-        }
-    }
-
 }
 
 // MARK: - Nested Block Drop Delegate
@@ -491,6 +593,24 @@ struct NestedBlockDropDelegate: DropDelegate {
         if dropState?.targetID == block.id {
             dropState = nil
         }
+    }
+}
+
+// MARK: - Nested Block Controls Container
+
+struct NestedBlockControlsContainer<Content: View>: View {
+    let block: NoteBlock
+    let content: (Bool) -> Content
+    @State private var isHovered = false
+    
+    var body: some View {
+        content(isHovered)
+            .contentShape(Rectangle()) // Ensure entire area is hoverable
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isHovered = hovering
+                }
+            }
     }
 }
 

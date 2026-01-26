@@ -20,6 +20,12 @@ class CodeBlockData {
         get { Language(rawValue: languageString) ?? .plainText }
         set { languageString = newValue.rawValue }
     }
+    
+    /// Returns the code block formatted as Markdown
+    var markdownOutput: String {
+        let lang = language == .plainText ? "" : languageString
+        return "```\(lang)\n\(code)\n```"
+    }
 
     init(
         id: UUID = UUID(),

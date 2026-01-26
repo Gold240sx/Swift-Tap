@@ -194,9 +194,10 @@ struct NotesView: View {
 // MARK: - Sidebar View
 
 struct NotesSidebarView: View {
-    @Query private var notes: [RichTextNote]
+    @Query private var allNotes: [RichTextNote]
     @Binding var selectedNote: RichTextNote?
     var onDelete: (RichTextNote) -> Void
+    @State private var searchText: String = ""
 
     init(selectedNote: Binding<RichTextNote?>, sortByCreation: Bool, filterCategory: String, onDelete: @escaping (RichTextNote) -> Void) {
         self._selectedNote = selectedNote
@@ -210,43 +211,79 @@ struct NotesSidebarView: View {
 
         switch filterCategory {
         case Category.all:
-            _notes = Query(sort: sortDescriptors)
+            _allNotes = Query(sort: sortDescriptors)
         case Category.uncategorized:
             let predicate = #Predicate<RichTextNote> { note in
                 note.category == nil
             }
-            _notes = Query(filter: predicate, sort: sortDescriptors)
+            _allNotes = Query(filter: predicate, sort: sortDescriptors)
         default:
             let predicate = #Predicate<RichTextNote> { note in
                 note.category?.name.contains(filterCategory) == true
             }
-            _notes = Query(filter: predicate, sort: sortDescriptors)
+            _allNotes = Query(filter: predicate, sort: sortDescriptors)
+        }
+    }
+    
+    /// Filtered notes based on search text (searches title and all content including tables, code blocks, etc.)
+    private var filteredNotes: [RichTextNote] {
+        guard !searchText.isEmpty else { return allNotes }
+        let searchLower = searchText.lowercased()
+        return allNotes.filter { note in
+            // Search in all searchable text (title, blocks, tables, code, lists, accordions, columns, etc.)
+            let allText = note.allSearchableText.lowercased()
+            return allText.contains(searchLower)
         }
     }
 
     var body: some View {
-        Group {
-            if notes.isEmpty {
-                ContentUnavailableView {
-                    Label("No Notes", systemImage: "note.text")
-                } description: {
-                    Text("Create a new note to get started.")
-                }
-            } else {
-                List(selection: $selectedNote) {
-                    ForEach(notes) { note in
-                        SidebarNoteRow(note: note)
-                            .tag(note)
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    onDelete(note)
-                                } label: {
-                                    Label("Delete Note", systemImage: "trash")
-                                }
-                            }
+        VStack(spacing: 0) {
+            // Search bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search notes...", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
                     }
+                    .buttonStyle(.plain)
                 }
-                .listStyle(.sidebar)
+            }
+            .padding(8)
+            .background(Color.gray.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            
+            // Notes list
+            Group {
+                if filteredNotes.isEmpty {
+                    ContentUnavailableView {
+                        Label(searchText.isEmpty ? "No Notes" : "No Results", systemImage: searchText.isEmpty ? "note.text" : "magnifyingglass")
+                    } description: {
+                        Text(searchText.isEmpty ? "Create a new note to get started." : "No notes match your search.")
+                    }
+                } else {
+                    List(selection: $selectedNote) {
+                        ForEach(filteredNotes) { note in
+                            SidebarNoteRow(note: note)
+                                .tag(note)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        onDelete(note)
+                                    } label: {
+                                        Label("Delete Note", systemImage: "trash")
+                                    }
+                                }
+                        }
+                    }
+                    .listStyle(.sidebar)
+                }
             }
         }
     }

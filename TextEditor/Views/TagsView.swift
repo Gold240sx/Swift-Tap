@@ -1,55 +1,45 @@
 //
-//----------------------------------------------
-// Original project: RichNotes
-// by  Stewart Lynch on 2025-10-29
+//  TagsView.swift
+//  TextEditor
 //
-// Follow me on Mastodon: https://iosdev.space/@StewartLynch
-// Follow me on Threads: https://www.threads.net/@stewartlynch
-// Follow me on Bluesky: https://bsky.app/profile/stewartlynch.bsky.social
-// Follow me on X: https://x.com/StewartLynch
-// Follow me on LinkedIn: https://linkedin.com/in/StewartLynch
-// Email: slynch@createchsol.com
-// Subscribe on YouTube: https://youTube.com/@StewartLynch
-// Buy me a ko-fi:  https://ko-fi.com/StewartLynch
-//----------------------------------------------
-// Copyright © 2025 CreaTECH Solutions. All rights reserved.
-
+//  View for managing tags
+//
 
 import SwiftUI
 import SwiftData
 
-struct CategoriesView: View {
+struct TagsView: View {
     enum Action: String {
-        case new = "New Category"
-        case edit = "Edit Category"
-        case none = "Categories"
+        case new = "New Tag"
+        case edit = "Edit Tag"
+        case none = "Tags"
     }
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) var context
-    @Query(sort: \Category.name) private var categories: [Category]
+    @Query(sort: \Tag.name) private var tags: [Tag]
     @State private var action = Action.none
-    @State private var newCategory = false
-    @State private var categoryName = ""
+    @State private var tagName = ""
     @State private var hexColor = Color.primary
-    @State private var selectedCategory: Category?
+    @State private var selectedTag: Tag?
+    
     var body: some View {
         NavigationStack {
             VStack {
                 if action != .none {
                     HStack {
-                        TextField("Category Name", text: $categoryName)
+                        TextField("Tag Name", text: $tagName)
                             .textFieldStyle(.roundedBorder)
                         ColorPicker("Color", selection: $hexColor, supportsOpacity: false)
                             .labelsHidden()
-                        if !categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        if !tagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Button {
-                                if let selectedCategory,
-                                   let foundCategory = categories.first(where: {$0.id == selectedCategory.id}) {
-                                    foundCategory.name = categoryName
-                                    foundCategory.hexColor = hexColor.toHex()!
+                                if let selectedTag,
+                                   let foundTag = tags.first(where: {$0.id == selectedTag.id}) {
+                                    foundTag.name = tagName
+                                    foundTag.hexColor = hexColor.toHex()!
                                 } else {
-                                    let newCategory = Category(name: categoryName, hexColor: hexColor.toHex()!)
-                                    context.insert(newCategory)
+                                    let newTag = Tag(name: tagName, hexColor: hexColor.toHex()!)
+                                    context.insert(newTag)
                                 }
                                 try? context.save()
                                 withAnimation {
@@ -64,23 +54,23 @@ struct CategoriesView: View {
                     .padding(.horizontal)
                 }
                 
-                if categories.isEmpty && action == .none {
-                    ContentUnavailableView("Create your first category", systemImage: "pencil.and.scribble")
-                } else if !categories.isEmpty {
+                if tags.isEmpty && action == .none {
+                    ContentUnavailableView("Create your first tag", systemImage: "tag")
+                } else if !tags.isEmpty {
                     List {
-                        ForEach(categories) { category in
+                        ForEach(tags) { tag in
                             HStack {
-                                Image(systemName: "circle.fill")
-                                    .foregroundStyle(Color(hex: category.hexColor)!)
-                                Text(category.name)
+                                Image(systemName: "tag.fill")
+                                    .foregroundStyle(Color(hex: tag.hexColor)!)
+                                Text(tag.name)
                                 if action != .new {
                                     Spacer()
                                     Button {
                                         withAnimation {
                                             action = .edit
-                                            selectedCategory = category
-                                            categoryName = category.name
-                                            hexColor = Color(hex: category.hexColor)!
+                                            selectedTag = tag
+                                            tagName = tag.name
+                                            hexColor = Color(hex: tag.hexColor)!
                                         }
                                     } label: {
                                         Image(systemName: "pencil")
@@ -90,7 +80,7 @@ struct CategoriesView: View {
                         }
                         .onDelete { indices in
                             for index in indices {
-                                context.delete(categories[index])
+                                context.delete(tags[index])
                             }
                             try? context.save()
                         }
@@ -123,12 +113,12 @@ struct CategoriesView: View {
     
     func reset() {
         action = .none
-        categoryName = ""
+        tagName = ""
         hexColor = .primary
-        selectedCategory = nil
+        selectedTag = nil
     }
 }
 
 #Preview(traits: .mockData) {
-    CategoriesView()
+    TagsView()
 }
