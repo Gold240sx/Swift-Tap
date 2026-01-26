@@ -15,35 +15,54 @@ struct ColumnBlockView: View {
     var focusState: FocusState<UUID?>.Binding
     var note: RichTextNote?
     var onDelete: () -> Void = {}
-    
+
     // Callbacks for nested interactions
     var onInsertTable: (Column, Int, Int) -> Void = { _, _, _ in }
     var onInsertAccordion: (Column, AccordionData.HeadingLevel) -> Void = { _, _ in }
     var onInsertCodeBlock: (Column) -> Void = { _ in }
+    var onInsertFilePath: (Column) -> Void = { _ in }
     var onRemoveBlock: (NoteBlock) -> Void = { _ in }
     var onMergeNestedBlock: (NoteBlock, Column) -> Void = { _, _ in }
     var onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void = { _, _, _ in }
-    
+    var onInsertTextBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onInsertTableAfter: (NoteBlock, Column, Int, Int) -> Void = { _, _, _, _ in }
+    var onInsertAccordionAfter: (NoteBlock, Column, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
+    var onInsertCodeBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onInsertListAfter: (NoteBlock, Column, ListData.ListType) -> Void = { _, _, _ in }
+    var onInsertFilePathAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    // Accordion-specific callbacks (for accordions nested inside columns)
+    var onInsertTableInAccordion: (AccordionData, Int, Int) -> Void = { _, _, _ in }
+    var onInsertAccordionInAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void = { _, _ in }
+    var onInsertCodeBlockInAccordion: (AccordionData) -> Void = { _ in }
+    var onRemoveBlockFromAccordion: (NoteBlock) -> Void = { _ in }
+    var onMergeNestedBlockInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onDropActionInAccordion: (NoteBlock, NoteBlock, DropEdge) -> Void = { _, _, _ in }
+    var onInsertTextBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertTableAfterInAccordion: (NoteBlock, AccordionData, Int, Int) -> Void = { _, _, _, _ in }
+    var onInsertAccordionAfterInAccordion: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
+    var onInsertCodeBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertListAfterInAccordion: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
+    var onInsertFilePathAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+
     @Environment(\.modelContext) var context
     @State private var isHovering = false
     @Binding var draggingBlock: NoteBlock?
     @State private var dropState: DropState?
     @State private var blockHeights: [UUID: CGFloat] = [:]
     @State private var isTrashHovered = false
+    @State private var isDraggingDivider = false
 
     @State private var viewWidth: CGFloat = 0
 
     var body: some View {
         let sortedColumns = columnData.columns.sorted(by: { $0.orderIndex < $1.orderIndex })
-        let totalRatio = sortedColumns.reduce(0.0) { $0 + $1.widthRatio }
-        
+        let totalRatio = max(0.001, sortedColumns.reduce(0.0) { $0 + $1.widthRatio })
         let numberOfColumns = CGFloat(columnData.columns.count)
-        let totalPadding = numberOfColumns * 16 // 8 leading + 8 trailing per column
-        let availableWidth = max(0, viewWidth - totalPadding)
-        
-        // Debug width calculations
-        let _ = print("ColumnBlockView rendering \(columnData.columns.count) columns. ViewWidth: \(viewWidth), AvailableWidth: \(availableWidth), TotalRatio: \(totalRatio)")
-        
+        let totalPadding = numberOfColumns * 16
+        let dividerWidth: CGFloat = 13 // Widened gap
+        let totalDividers = max(0, numberOfColumns - 1) * dividerWidth
+        let availableWidth = max(1, viewWidth - totalPadding - totalDividers)
+
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(sortedColumns.enumerated()), id: \.element.id) { index, column in
                 ColumnContentView(
@@ -56,21 +75,59 @@ struct ColumnBlockView: View {
                     onRemoveBlock: onRemoveBlock,
                     onMergeNestedBlock: onMergeNestedBlock,
                     onDropAction: onDropAction,
+                    onInsertFilePath: onInsertFilePath,
+                    onInsertTextBlockAfter: onInsertTextBlockAfter,
+                    onInsertTableAfter: onInsertTableAfter,
+                    onInsertAccordionAfter: onInsertAccordionAfter,
+                    onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                    onInsertListAfter: onInsertListAfter,
+                    onInsertFilePathAfter: onInsertFilePathAfter,
+                    onInsertTableInAccordion: onInsertTableInAccordion,
+                    onInsertAccordionInAccordion: onInsertAccordionInAccordion,
+                    onInsertCodeBlockInAccordion: onInsertCodeBlockInAccordion,
+                    onRemoveBlockFromAccordion: onRemoveBlockFromAccordion,
+                    onMergeNestedBlockInAccordion: onMergeNestedBlockInAccordion,
+                    onDropActionInAccordion: onDropActionInAccordion,
+                    onInsertTextBlockAfterInAccordion: onInsertTextBlockAfterInAccordion,
+                    onInsertTableAfterInAccordion: onInsertTableAfterInAccordion,
+                    onInsertAccordionAfterInAccordion: onInsertAccordionAfterInAccordion,
+                    onInsertCodeBlockAfterInAccordion: onInsertCodeBlockAfterInAccordion,
+                    onInsertListAfterInAccordion: onInsertListAfterInAccordion,
+                    onInsertFilePathAfterInAccordion: onInsertFilePathAfterInAccordion,
                     draggingBlock: $draggingBlock,
                     dropState: $dropState,
                     blockHeights: $blockHeights,
                     note: note
                 )
+
+                // Resize divider between columns (not after the last one)
+                if index < sortedColumns.count - 1 {
+                    ColumnResizeDivider(
+                        leftColumn: column,
+                        rightColumn: sortedColumns[index + 1],
+                        totalRatio: totalRatio,
+                        availableWidth: availableWidth,
+                        isDragging: $isDraggingDivider,
+                        context: context
+                    )
+                }
             }
         }
-        // Force equal height for all columns in the HStack
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { viewWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, newWidth in
+                        viewWidth = newWidth
+                    }
+            }
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.red.opacity(0.5), lineWidth: isTrashHovered ? 2 : 0)
                 .padding(-4)
         )
-        // Main block overlay
         .overlay(alignment: .topTrailing) {
              if isHovering {
                  Button {
@@ -99,11 +156,6 @@ struct ColumnBlockView: View {
                 isHovering = hovering
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 100) // Ensure it has some minimum height
-        .measureWidth { width in
-            viewWidth = width
-            print("ColumnBlockView measured width: \(width)")
-        }
     }
 }
 
@@ -121,7 +173,27 @@ struct ColumnContentView: View {
     var onRemoveBlock: (NoteBlock) -> Void
     var onMergeNestedBlock: (NoteBlock, Column) -> Void
     var onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void
-    
+    var onInsertFilePath: (Column) -> Void = { _ in }
+    var onInsertTextBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onInsertTableAfter: (NoteBlock, Column, Int, Int) -> Void = { _, _, _, _ in }
+    var onInsertAccordionAfter: (NoteBlock, Column, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
+    var onInsertCodeBlockAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    var onInsertListAfter: (NoteBlock, Column, ListData.ListType) -> Void = { _, _, _ in }
+    var onInsertFilePathAfter: (NoteBlock, Column) -> Void = { _, _ in }
+    // Accordion-specific callbacks (for accordions nested inside columns)
+    var onInsertTableInAccordion: (AccordionData, Int, Int) -> Void = { _, _, _ in }
+    var onInsertAccordionInAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void = { _, _ in }
+    var onInsertCodeBlockInAccordion: (AccordionData) -> Void = { _ in }
+    var onRemoveBlockFromAccordion: (NoteBlock) -> Void = { _ in }
+    var onMergeNestedBlockInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onDropActionInAccordion: (NoteBlock, NoteBlock, DropEdge) -> Void = { _, _, _ in }
+    var onInsertTextBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertTableAfterInAccordion: (NoteBlock, AccordionData, Int, Int) -> Void = { _, _, _, _ in }
+    var onInsertAccordionAfterInAccordion: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
+    var onInsertCodeBlockAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertListAfterInAccordion: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
+    var onInsertFilePathAfterInAccordion: (NoteBlock, AccordionData) -> Void = { _, _ in }
+
     @Binding var draggingBlock: NoteBlock?
     @Binding var dropState: DropState?
     @Binding var blockHeights: [UUID: CGFloat]
@@ -133,9 +205,6 @@ struct ColumnContentView: View {
 
     var body: some View {
         let columnWidth = max(0, (column.widthRatio / totalRatio) * availableWidth)
-        
-        // Debug print to track width changes
-        let _ = print("Column \(column.id) - Ratio: \(column.widthRatio), AvailableWidth: \(availableWidth), Calculated Width: \(columnWidth)")
         
         VStack(alignment: .leading, spacing: 8) {
             ForEach(column.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
@@ -181,12 +250,21 @@ struct ColumnContentView: View {
     
     private func appendTextBlock(to column: Column) {
         let sorted = column.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+
+        // If last block is an empty text block, just focus it instead of creating new one
+        if let lastBlock = sorted.last,
+           lastBlock.type == .text,
+           lastBlock.text?.characters.isEmpty ?? true {
+            focusState.wrappedValue = lastBlock.id
+            return
+        }
+
         let newIndex = (sorted.last?.orderIndex ?? -1) + 1
         let newBlock = NoteBlock(orderIndex: newIndex, text: "", type: .text)
         newBlock.parentColumn = column
         column.blocks.append(newBlock)
         context.insert(newBlock)
-        
+
         // Focus new block
         focusState.wrappedValue = newBlock.id
         try? context.save()
@@ -194,14 +272,83 @@ struct ColumnContentView: View {
     
     @ViewBuilder
     private func nestedBlockView(for block: NoteBlock, in column: Column) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: 4) {
+            // Plus button with insert menu
+            Menu {
+                Button {
+                    onInsertTextBlockAfter(block, column)
+                } label: {
+                    Label("Text Block", systemImage: "text.alignleft")
+                }
+
+                Button {
+                    onInsertTableAfter(block, column, 3, 3)
+                } label: {
+                    Label("Table", systemImage: "tablecells")
+                }
+
+                Button {
+                    onInsertAccordionAfter(block, column, .h2)
+                } label: {
+                    Label("Accordion", systemImage: "list.bullet.indent")
+                }
+
+                Button {
+                    onInsertCodeBlockAfter(block, column)
+                } label: {
+                    Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Menu {
+                    Button {
+                        onInsertListAfter(block, column, .bullet)
+                    } label: {
+                        Label("Bullet List", systemImage: "list.bullet")
+                    }
+                    Button {
+                        onInsertListAfter(block, column, .numbered)
+                    } label: {
+                        Label("Numbered List", systemImage: "list.number")
+                    }
+                    Button {
+                        onInsertListAfter(block, column, .checkbox)
+                    } label: {
+                        Label("Checkbox List", systemImage: "checklist")
+                    }
+                } label: {
+                    Label("Lists", systemImage: "list.bullet.indent")
+                }
+
+                Divider()
+
+                Button {
+                    onInsertFilePathAfter(block, column)
+                } label: {
+                    Label("File Link", systemImage: "doc.badge.arrow.up")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14, height: 20)
+            }
+            .buttonStyle(.plain)
+            .offset(y: -2)
+
             // Drag Handle
             Image(systemName: "square.grid.2x2.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .frame(width: 16, height: 20)
-                .padding(.top, block.type == .text ? 8 : 4) // Align with text content (approx 8px inset) or standard blocks
+                .offset(y: -2)
                 .contentShape(Rectangle()) // Ensure the entire frame is interactive
+                .contextMenu {
+                    Button(role: .destructive) {
+                        onRemoveBlock(block)
+                    } label: {
+                        Label("Delete \(block.displayName)", systemImage: "trash")
+                    }
+                }
                 .onDrag {
                     let provider = NSItemProvider(object: block.id.uuidString as NSString)
                     provider.suggestedName = "Nested Block"
@@ -257,8 +404,9 @@ struct ColumnContentView: View {
                         focusState: focusState,
                         onDelete: { onRemoveBlock(block) },
                         onMerge: { onMergeNestedBlock(block, column) },
-                        isNested: true
+                        isNested: false
                     )
+                    .padding(.top, 5) // Align text with icon 5 is correct
                 } else if let listData = block.listData {
                     ListBlockView(
                         listData: listData,
@@ -266,11 +414,13 @@ struct ColumnContentView: View {
                         focusState: focusState,
                         onDelete: { onRemoveBlock(block) }
                     )
+                    .padding(.top, 5) // Push list down to align with icon
                 } else if let table = block.table {
                     TableEditorView(table: table, note: nil, onDelete: { onRemoveBlock(block) })
                         .contextMenu {
                             Button(role: .destructive) { onRemoveBlock(block) } label: { Label("Delete Table", systemImage: "trash") }
                         }
+                        .padding(.top, 4) // Keep this... it is the proper adjustment.
                 } else if let accordion = block.accordion {
                      AccordionBlockView(
                         accordion: accordion,
@@ -283,12 +433,28 @@ struct ColumnContentView: View {
                         focusState: focusState,
                         note: note,
                         onDelete: { onRemoveBlock(block) },
+                        onInsertTable: onInsertTableInAccordion,
+                        onInsertAccordion: onInsertAccordionInAccordion,
+                        onInsertCodeBlock: onInsertCodeBlockInAccordion,
+                        onRemoveBlock: onRemoveBlockFromAccordion,
+                        onMergeNestedBlock: onMergeNestedBlockInAccordion,
+                        onDropAction: onDropActionInAccordion,
+                        onInsertTextBlockAfter: onInsertTextBlockAfterInAccordion,
+                        onInsertTableAfter: onInsertTableAfterInAccordion,
+                        onInsertAccordionAfter: onInsertAccordionAfterInAccordion,
+                        onInsertCodeBlockAfter: onInsertCodeBlockAfterInAccordion,
+                        onInsertListAfter: onInsertListAfterInAccordion,
+                        onInsertFilePathAfter: onInsertFilePathAfterInAccordion,
                         draggingBlock: $draggingBlock
                      )
                 } else if let codeBlock = block.codeBlock {
                     CodeBlockView(codeBlock: codeBlock, note: note, onDelete: { onRemoveBlock(block) })
                 } else if let imageData = block.imageData {
                     ImageBlockView(imageData: imageData, onDelete: { onRemoveBlock(block) })
+                } else if let bookmarkData = block.bookmarkData {
+                    BookmarkBlockView(bookmarkData: bookmarkData, onDelete: { onRemoveBlock(block) })
+                } else if let filePathData = block.filePathData {
+                    FilePathBlockView(filePathData: filePathData, onDelete: { onRemoveBlock(block) })
                 }
             }
         }
@@ -351,4 +517,92 @@ struct NestedBlockContainer<Content: View>: View {
     }
 }
 
+// MARK: - Column Resize Divider
+struct ColumnResizeDivider: View {
+    @Bindable var leftColumn: Column
+    @Bindable var rightColumn: Column
+    let totalRatio: Double
+    let availableWidth: CGFloat
+    @Binding var isDragging: Bool
+    var context: ModelContext
+
+    @State private var isHovering = false
+    @State private var startLeftRatio: Double = 0
+    @State private var startRightRatio: Double = 0
+
+    // Snap positions as fractions of the combined width (left column ratio)
+    private let snapPositions: [Double] = [0.25, 1.0/3.0, 0.5, 2.0/3.0, 0.75]
+    private let snapThreshold: Double = 0.05 // How close to snap (5% of total)
+
+    var body: some View {
+        ZStack {
+            // Background
+            Rectangle()
+                .fill(isDragging || isHovering ? Color.accentColor.opacity(0.15) : Color.clear)
+
+            // Visual handle bar
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isDragging || isHovering ? Color.accentColor : Color.gray.opacity(0.3))
+                .frame(width: 4, height: 40)
+        }
+        .frame(width: 13)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovering = hovering
+            #if os(macOS)
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else if !isDragging {
+                NSCursor.pop()
+            }
+            #endif
+        }
+        .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        // Guard against division by zero
+                        guard availableWidth > 0, totalRatio > 0 else { return }
+
+                        if !isDragging {
+                            isDragging = true
+                            startLeftRatio = leftColumn.widthRatio
+                            startRightRatio = rightColumn.widthRatio
+                        }
+
+                        // Calculate ratio change based on drag distance
+                        let combinedRatio = max(0.001, startLeftRatio + startRightRatio) // Prevent division by zero
+                        let dragDistance = value.translation.width
+                        let ratioChange = (dragDistance / availableWidth) * totalRatio
+
+                        // Calculate the new left ratio as a fraction of combined
+                        var newLeftRatio = startLeftRatio + ratioChange
+                        let leftFraction = newLeftRatio / combinedRatio
+
+                        // Snap to nearest position if close enough
+                        for snapPos in snapPositions {
+                            if abs(leftFraction - snapPos) < snapThreshold {
+                                newLeftRatio = snapPos * combinedRatio
+                                break
+                            }
+                        }
+
+                        // Apply constraints (minimum 10% of combined ratio per column)
+                        let minRatio = combinedRatio * 0.1
+                        newLeftRatio = max(minRatio, min(combinedRatio - minRatio, newLeftRatio))
+                        let newRightRatio = combinedRatio - newLeftRatio
+
+                        leftColumn.widthRatio = newLeftRatio
+                        rightColumn.widthRatio = newRightRatio
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        #if os(macOS)
+                        NSCursor.pop()
+                        #endif
+                        try? context.save()
+                    }
+            )
+    }
+}
 

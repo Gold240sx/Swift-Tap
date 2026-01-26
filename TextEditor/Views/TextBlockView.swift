@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct TextBlockView: View {
     @Bindable var block: NoteBlock
@@ -15,41 +16,53 @@ struct TextBlockView: View {
     var onMerge: () -> Void = {}
     var onExtractSelection: () -> Void = {}
 
+    /// Callback for inserting a bookmark block (called when user selects bookmark from URL paste popover)
+    var onInsertBookmark: ((URL) -> Void)?
+
     var isNested: Bool = false
 
     @State private var eventMonitor: Any?
+    @State private var showURLPastePopover = false
+    @State private var pendingURLPaste: (url: URL, range: NSRange)?
 
     var body: some View {
-        Group {
-            if isNested {
-                MacEditorView(
-                    text: Binding(
-                        get: { block.text ?? AttributedString("") },
-                        set: { block.text = $0 }
-                    ),
-                    selection: $selection,
-                    font: .systemFont(ofSize: 13)
+        ZStack(alignment: .topLeading) {
+            MacEditorView(
+                text: Binding(
+                    get: { block.text ?? AttributedString("") },
+                    set: { block.text = $0 }
+                ),
+                selection: $selection,
+                font: isNested ? .systemFont(ofSize: 13) : .systemFont(ofSize: NSFont.systemFontSize),
+                onURLPaste: handleURLPaste
+            )
+            
+            // Placeholder text
+            if (block.text?.characters.isEmpty ?? true) && focusState.wrappedValue != block.id {
+                Text("Type Content here")
+                    .font(isNested ? .system(size: 13) : .system(size: NSFont.systemFontSize))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 8)
+                    .allowsHitTesting(false)
+            }
+        }
+        .popover(isPresented: $showURLPastePopover) {
+            if let pending = pendingURLPaste {
+                URLPastePopover(
+                    url: pending.url,
+                    onSelect: { type in
+                        handleURLTypeSelection(type, url: pending.url, range: pending.range)
+                        showURLPastePopover = false
+                        pendingURLPaste = nil
+                    },
+                    onCancel: {
+                        // Insert the URL as plain text
+                        insertPlainURL(pending.url.absoluteString, at: pending.range)
+                        showURLPastePopover = false
+                        pendingURLPaste = nil
+                    }
                 )
-            } else {
-                ZStack(alignment: .topLeading) {
-                    // Hidden text for height calculation
-                    Text((block.text ?? "") + "\n")
-                        .font(.body)
-                        .foregroundStyle(.clear)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    TextEditor(text: Binding(
-                        get: { block.text ?? "" },
-                        set: { block.text = $0 }
-                    ), selection: $selection)
-                    .font(.body)
-                    .scrollDisabled(true)
-                    .focused(focusState, equals: block.id)
-                    .tint(Color(red: 0.0, green: 0.3, blue: 0.8))
-                    .accentColor(Color(red: 0.0, green: 0.3, blue: 0.8))
-                }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -148,5 +161,66 @@ struct TextBlockView: View {
 
             return event
         }
+    }
+
+    // MARK: - URL Paste Handling
+
+    /// Handles URL paste detection from MacEditorView
+    private func handleURLPaste(_ urlString: String, _ range: NSRange) -> Bool {
+        guard let url = URLValidator.extractURL(from: urlString) else {
+            return true // Not a valid URL, allow normal paste
+        }
+
+        // Store the pending URL and show popover
+        pendingURLPaste = (url: url, range: range)
+        showURLPastePopover = true
+
+        return false // Cancel the paste, we'll handle it ourselves
+    }
+
+    /// Handles the user's selection from the URL paste popover
+    private func handleURLTypeSelection(_ type: URLDisplayType, url: URL, range: NSRange) {
+        switch type {
+        case .standard:
+            insertStandardLink(url, at: range)
+        case .bookmark:
+            onInsertBookmark?(url)
+        }
+    }
+
+    /// Inserts a standard link (blue underlined text)
+    private func insertStandardLink(_ url: URL, at range: NSRange) {
+        var text = block.text ?? AttributedString("")
+        var linkText = AttributedString(url.absoluteString)
+        linkText.link = url
+        linkText.foregroundColor = .blue
+        linkText.underlineStyle = .single
+
+        // Insert at the range
+        if let swiftRange = Range(range, in: String(text.characters)) {
+            let startIndex = text.index(text.startIndex, offsetByCharacters: swiftRange.lowerBound.utf16Offset(in: String(text.characters)))
+            let endIndex = text.index(text.startIndex, offsetByCharacters: swiftRange.upperBound.utf16Offset(in: String(text.characters)))
+            text.replaceSubrange(startIndex..<endIndex, with: linkText)
+        } else {
+            text.append(linkText)
+        }
+
+        block.text = text
+    }
+
+    /// Inserts plain URL text
+    private func insertPlainURL(_ urlString: String, at range: NSRange) {
+        var text = block.text ?? AttributedString("")
+        let plainText = AttributedString(urlString)
+
+        if let swiftRange = Range(range, in: String(text.characters)) {
+            let startIndex = text.index(text.startIndex, offsetByCharacters: swiftRange.lowerBound.utf16Offset(in: String(text.characters)))
+            let endIndex = text.index(text.startIndex, offsetByCharacters: swiftRange.upperBound.utf16Offset(in: String(text.characters)))
+            text.replaceSubrange(startIndex..<endIndex, with: plainText)
+        } else {
+            text.append(plainText)
+        }
+
+        block.text = text
     }
 }

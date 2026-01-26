@@ -16,6 +16,7 @@
 
 
 import SwiftUI
+import AppKit
 
 struct MoreFormattingView: View {
     @Environment(\.fontResolutionContext) var fontResolutionContext
@@ -23,6 +24,7 @@ struct MoreFormattingView: View {
     @Binding var selection: AttributedTextSelection
     @State private var color = Color.primary
     @State private var isInternalUpdate = false
+
     var body: some View {
         var selCopy = selection
         let states = SelectionState.selectionStyleState(
@@ -115,6 +117,17 @@ struct MoreFormattingView: View {
                 }
             }
             .buttonStyle(.bordered)
+
+            // URL Conversion Section
+            if let url = selectedTextAsURL() {
+                Divider()
+                    .padding(.vertical, 4)
+
+                Button("Convert to Link") {
+                    convertToStandardURL(url)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .buttonStyle(.plain)
         .padding()
@@ -125,7 +138,7 @@ struct MoreFormattingView: View {
             syncColorFromSelection()
         }
     }
-    
+
     private func syncColorFromSelection() {
         var selectionCopy = selection
         let containers = SelectionState.selectedAttributeContainers(text: text, selection: &selectionCopy)
@@ -136,6 +149,26 @@ struct MoreFormattingView: View {
         color = target
         DispatchQueue.main.async { [self] in
             isInternalUpdate = false
+        }
+    }
+
+    // MARK: - URL Conversion
+
+    /// Extracts a URL from the currently selected text
+    private func selectedTextAsURL() -> URL? {
+        guard case .ranges(let rangeSet) = selection.indices(in: text),
+              let range = rangeSet.ranges.first else { return nil }
+
+        let selectedText = String(text[range].characters).trimmingCharacters(in: .whitespaces)
+        return URLValidator.extractURL(from: selectedText)
+    }
+
+    /// Converts selected text to a standard URL link
+    private func convertToStandardURL(_ url: URL) {
+        text.transformAttributes(in: &selection) { container in
+            container.link = url
+            container.foregroundColor = .blue
+            container.underlineStyle = .single
         }
     }
 }

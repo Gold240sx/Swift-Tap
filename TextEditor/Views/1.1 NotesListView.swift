@@ -9,6 +9,63 @@ import SwiftData
 struct NotesListView: View {
     @Query private var notes: [RichTextNote]
     @Environment(\.modelContext) var context
+    
+    /// Recursively faults in all attributes of a block and its nested blocks
+    private func faultInBlockAttributes(_ block: NoteBlock) {
+        // Force fault resolution by accessing attributes
+        _ = block.text
+        _ = block.type
+        _ = block.orderIndex
+        _ = block.typeString
+        
+        // Handle nested blocks in accordions
+        if let accordion = block.accordion {
+            _ = accordion.heading
+            _ = accordion.level
+            for nestedBlock in accordion.contentBlocks {
+                faultInBlockAttributes(nestedBlock)
+            }
+        }
+        
+        // Handle nested blocks in columns
+        if let columnData = block.columnData {
+            for column in columnData.columns {
+                for nestedBlock in column.blocks {
+                    faultInBlockAttributes(nestedBlock)
+                }
+            }
+        }
+    }
+    
+    private func deleteNoteSafely(_ note: RichTextNote, context: ModelContext) {
+        // Fault in note's attributes first
+        _ = note.text
+        _ = note.title
+        _ = note.createdOn
+        _ = note.updatedOn
+        
+        // Clear legacy tables array
+        note.tables.removeAll()
+        
+        // Manually delete blocks first to ensure all attributes are faulted in
+        let blocksToDelete = Array(note.blocks)
+        for block in blocksToDelete {
+            // Recursively fault in all attributes (including nested blocks)
+            faultInBlockAttributes(block)
+            
+            // Remove from note's blocks array
+            note.blocks.removeAll { $0.id == block.id }
+            
+            // Delete the block (this will cascade delete related data)
+            context.delete(block)
+        }
+        
+        // Save after deleting blocks
+        try? context.save()
+        
+        // Now delete the note
+        context.delete(note)
+    }
 
     init(sortByCreation: Bool, filterCategory: String) {
         let sortDescriptors: [SortDescriptor<RichTextNote>] = if sortByCreation {
@@ -49,7 +106,8 @@ struct NotesListView: View {
                     }
                     .onDelete { indices in
                         for index in indices {
-                            context.delete(notes[index])
+                            let note = notes[index]
+                            deleteNoteSafely(note, context: context)
                         }
                         try? context.save()
                     }

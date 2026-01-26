@@ -10,12 +10,12 @@ struct SyntaxHighlighter {
     init(theme: SyntaxTheme = .default, fontSize: CGFloat = 14) {
         self.theme = theme
         self.fontSize = fontSize
-        
+
         if let highlightr = highlightr {
             // Map SyntaxTheme name to Highlightr theme name
             let themeName = theme.name.lowercased()
             let style: String
-            
+
             if themeName.contains("monokai") {
                 style = "monokai-sublime"
             } else if themeName.contains("github") {
@@ -25,9 +25,9 @@ struct SyntaxHighlighter {
             } else {
                 style = "xcode"
             }
-            
+
             highlightr.setTheme(to: style)
-            
+
             #if os(macOS)
             let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             highlightr.theme.setCodeFont(font)

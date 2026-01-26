@@ -24,6 +24,18 @@ extension UTType {
     static let noteBlock = UTType(exportedAs: "com.stewartlynch.noteblock")
 }
 
+struct ScrollTopPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+enum ScrollDirection {
+    case up
+    case down
+}
+
 struct NotesEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var note: RichTextNote
@@ -34,6 +46,7 @@ struct NotesEditorView: View {
     @State private var selectedCategory: String = Category.uncategorized
     @State private var editCategories = false
     @FocusState private var focusedBlockID: UUID?
+    @FocusState private var isTitleFocused: Bool
     @State private var selections: [UUID: AttributedTextSelection] = [:]
     @State private var activeBlockID: UUID?
     @Environment(\.undoManager) var undoManager
@@ -41,24 +54,47 @@ struct NotesEditorView: View {
     @State private var dropState: DropState?
     @State private var blockHeights: [UUID: CGFloat] = [:]
     @State private var draggingBlock: NoteBlock?
+    @State private var copiedBlock: NoteBlock?
+    @State private var autoScrollTimer: Timer?
+    @State private var scrollProxy: ScrollViewProxy?
+    @State private var scrollDirection: ScrollDirection?
+    @State private var titleEventMonitor: Any?
     private let saveTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     // MARK: - Main Editor Content
     
     @ViewBuilder
     private var mainEditorContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                // Document Title
-                TextField("Page Title", text: $note.title, axis: .vertical)
-                    .font(.system(size: 34, weight: .bold))
-                    .textFieldStyle(.plain)
-                    .padding(.bottom, 8)
-                    .onChange(of: note.title) {
-                        note.updatedOn = Date.now
-                    }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    // Document Title
+                    TextField("Page Title", text: $note.title, axis: .vertical)
+                        .font(.system(size: 34, weight: .bold))
+                        .textFieldStyle(.plain)
+                        .padding(.bottom, 8)
+                        .id("scroll-top")
+                        .focused($isTitleFocused)
+                        .onChange(of: note.title) {
+                            note.updatedOn = Date.now
+                        }
+                        .onChange(of: isTitleFocused) { _, newValue in
+                            if newValue {
+                                setupTitleEventMonitor()
+                            } else {
+                                removeTitleEventMonitor()
+                            }
+                        }
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onAppear {
+                                        scrollProxy = proxy
+                                    }
+                            }
+                        )
 
-                ForEach(note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
+                    ForEach(note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
                     blockRowView(for: block)
                         .padding(4)
                         .background(
@@ -90,8 +126,22 @@ struct NotesEditorView: View {
                             draggingBlock: $draggingBlock,
                             dropState: $dropState,
                             blockHeights: blockHeights,
-                            reorderBlock: handleBlockDrop
+                            reorderBlock: handleBlockDrop,
+                            onDragNearEdge: { direction in
+                                if let direction = direction {
+                                    startAutoScroll(direction: direction)
+                                } else {
+                                    stopAutoScroll()
+                                }
+                            },
+                            totalBlocks: note.blocks.count
                         ))
+                    }
+                    
+                    // Bottom spacer for scrolling
+                    Color.clear
+                        .frame(height: 1)
+                        .id("scroll-bottom")
                 }
             }
             .padding(.bottom, 50) // Space at bottom to scroll
@@ -101,8 +151,42 @@ struct NotesEditorView: View {
                 NotificationCenter.default.post(name: NSNotification.Name("DeselectAllTables"), object: nil)
                 focusedBlockID = nil
             }
+            .onChange(of: draggingBlock) { _, newValue in
+                if newValue == nil {
+                    stopAutoScroll()
+                }
+            }
         }
     }
+    
+    private func startAutoScroll(direction: ScrollDirection) {
+        // Only start if direction changed or timer doesn't exist
+        guard scrollDirection != direction || autoScrollTimer == nil else { return }
+        scrollDirection = direction
+        
+        // Stop existing timer if any
+        autoScrollTimer?.invalidate()
+        
+        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            if let proxy = scrollProxy {
+                withAnimation(.linear(duration: 0.05)) {
+                    switch direction {
+                    case .up:
+                        proxy.scrollTo("scroll-top", anchor: .top)
+                    case .down:
+                        proxy.scrollTo("scroll-bottom", anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopAutoScroll() {
+        autoScrollTimer?.invalidate()
+        autoScrollTimer = nil
+        scrollDirection = nil
+    }
+    
 
     var currentText: Binding<AttributedString> {
         Binding(
@@ -138,6 +222,64 @@ struct NotesEditorView: View {
             }
         )
     }
+    
+    /// Recursively faults in all attributes of a block and its nested blocks
+    private func faultInBlockAttributes(_ block: NoteBlock) {
+        // Force fault resolution by accessing attributes
+        _ = block.text
+        _ = block.type
+        _ = block.orderIndex
+        _ = block.typeString
+        
+        // Handle nested blocks in accordions
+        if let accordion = block.accordion {
+            _ = accordion.heading
+            _ = accordion.level
+            for nestedBlock in accordion.contentBlocks {
+                faultInBlockAttributes(nestedBlock)
+            }
+        }
+        
+        // Handle nested blocks in columns
+        if let columnData = block.columnData {
+            for column in columnData.columns {
+                for nestedBlock in column.blocks {
+                    faultInBlockAttributes(nestedBlock)
+                }
+            }
+        }
+    }
+    
+    private func deleteNoteSafely() {
+        // Fault in note's attributes first
+        _ = note.text
+        _ = note.title
+        _ = note.createdOn
+        _ = note.updatedOn
+        
+        // Clear legacy tables array
+        note.tables.removeAll()
+        
+        // Manually delete blocks first to ensure all attributes are faulted in
+        let blocksToDelete = Array(note.blocks)
+        for block in blocksToDelete {
+            // Recursively fault in all attributes (including nested blocks)
+            faultInBlockAttributes(block)
+            
+            // Remove from note's blocks array
+            note.blocks.removeAll { $0.id == block.id }
+            
+            // Delete the block (this will cascade delete related data)
+            context.delete(block)
+        }
+        
+        // Save after deleting blocks
+        try? context.save()
+        
+        // Now delete the note
+        context.delete(note)
+        try? context.save()
+    }
 
     var body: some View {
         VStack(alignment: .leading){
@@ -156,9 +298,8 @@ struct NotesEditorView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     if note.blocks.isEmpty || (note.blocks.count == 1 && note.blocks.first?.text?.characters.isEmpty == true) {
-                        context.delete(note)
+                        deleteNoteSafely()
                     }
-                    try? context.save()
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.backward")
@@ -192,102 +333,6 @@ struct NotesEditorView: View {
                 } label: {
                     Image(systemName: "textformat.alt")
                 }
-
-                Menu {
-                    Button {
-                        activeElementPopover = .table
-                    } label: {
-                        Label("Table", systemImage: "tablecells")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.white)
-                    }
-                    
-                    Button {
-                        activeElementPopover = .accordion
-                    } label: {
-                        Label("Accordion", systemImage: "list.bullet.indent")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.white)
-                    }
-                    
-                    Button {
-                        activeElementPopover = .image
-                    } label: {
-                        Label("Image", systemImage: "photo")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.white)
-                    }
-                    
-                    Button {
-                        insertCodeBlock()
-                    } label: {
-                        Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.white)
-                    }
-                    
-                    Menu {
-                        Button {
-                            insertColumns(ratios: [0.5, 0.5])
-                        } label: {
-                            Label("1/2 - 1/2", image: "half")
-                        }
-                        Button {
-                            insertColumns(ratios: [0.75, 0.25])
-                        } label: {
-                            Label("3/4 - 1/4", image: "three-quarter")
-                        }
-                        Button {
-                            insertColumns(ratios: [0.25, 0.75])
-                        } label: {
-                            Label("1/4 - 3/4", image: "one-quarter")
-                        }
-                        Button {
-                            insertColumns(ratios: [0.66, 0.33])
-                        } label: {
-                            Label("2/3 - 1/3", image: "two-third")
-                        }
-                        Button {
-                            insertColumns(ratios: [0.33, 0.66])
-                        } label: {
-                            Label("1/3 - 2/3", image: "one-third")
-                        }
-                        Button {
-                            insertColumns(ratios: [0.33, 0.33, 0.33])
-                        } label: {
-                            Label("3 Columns", image: "three-column")
-                        }
-                    } label: {
-                        Label("Columns", systemImage: "rectangle.split.3x1")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.white)
-                    }
-
-                    Menu {
-                        Button {
-                            insertBulletList()
-                        } label: {
-                            Label("Bullet List", systemImage: "list.bullet")
-                        }
-                        Button {
-                            insertNumberedList()
-                        } label: {
-                            Label("Numbered List", systemImage: "list.number")
-                        }
-                        Button {
-                            insertCheckboxList()
-                        } label: {
-                            Label("Checkbox List", systemImage: "checklist")
-                        }
-                    } label: {
-                        Label("Lists", systemImage: "list.bullet.indent")
-                    }
-
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundStyle(.white)
-                }
-                .tint(.white)
             }
 
             ToolbarItemGroup(placement: .secondaryAction) {
@@ -326,9 +371,6 @@ struct NotesEditorView: View {
             // Run migration if needed
             NoteMigrationHelper.migrateIfNecessary(note: note, context: context)
 
-            // Ensure trailing text block if note ends with a component
-            ensureTrailingTextBlock()
-
             // Auto-focus first text block if nothing is focused
             if focusedBlockID == nil {
                 if let firstTextBlock = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex }).first(where: { $0.type == .text }) {
@@ -347,12 +389,36 @@ struct NotesEditorView: View {
         .onAppear {
             syncUndoManager()
         }
+        .onDisappear {
+            removeTitleEventMonitor()
+        }
         .onChange(of: undoManager) {
             syncUndoManager()
         }
-        // Paste without cursor support
+         // Paste without cursor support
         .onPasteCommand(of: [.text, .plainText, UTType.utf8PlainText]) { providers in
              pasteAtEnd(providers)
+        }
+        .popover(item: $activeElementPopover) { item in
+            switch item {
+            case .table:
+                TableGridPicker(selectedRows: .constant(0), selectedCols: .constant(0)) { rows, cols in
+                    insertTable(rows: rows, cols: cols)
+                    activeElementPopover = nil
+                }
+            case .accordion:
+                AccordionPicker { level in
+                    insertAccordion(level: level)
+                    activeElementPopover = nil
+                }
+            case .image:
+                ImageInsertSheet(isPresented: Binding(
+                    get: { activeElementPopover == .image },
+                    set: { if !$0 { activeElementPopover = nil } }
+                )) { url, alt, width, height in
+                    insertImage(url: url, alt: alt, width: width, height: height)
+                }
+            }
         }
     }
     
@@ -433,7 +499,116 @@ struct NotesEditorView: View {
 
     @ViewBuilder
     private func blockRowView(for block: NoteBlock) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: 4) {
+            // Plus button with insert menu
+            Menu {
+                Button {
+                    insertTextBlockAfter(block)
+                } label: {
+                    Label("Text Block", systemImage: "text.alignleft")
+                }
+
+                Button {
+                    insertTableAfterBlock(block, rows: 3, cols: 3)
+                } label: {
+                    Label("Table", systemImage: "tablecells")
+                }
+
+                Button {
+                    insertAccordionAfterBlock(block, level: .h2)
+                } label: {
+                    Label("Accordion", systemImage: "list.bullet.indent")
+                }
+
+                Button {
+                    insertImageAfterBlock(block)
+                } label: {
+                    Label("Image", systemImage: "photo")
+                }
+
+                Button {
+                    insertCodeBlockAfterBlock(block)
+                } label: {
+                    Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Button {
+                    insertQuoteAfterBlock(block)
+                } label: {
+                    Label("Quote", systemImage: "text.quote")
+                }
+
+                Menu {
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.5, 0.5])
+                    } label: {
+                        Label("1/2 - 1/2", image: "half")
+                    }
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.75, 0.25])
+                    } label: {
+                        Label("3/4 - 1/4", image: "three-quarter")
+                    }
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.25, 0.75])
+                    } label: {
+                        Label("1/4 - 3/4", image: "one-quarter")
+                    }
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.66, 0.33])
+                    } label: {
+                        Label("2/3 - 1/3", image: "two-third")
+                    }
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.33, 0.66])
+                    } label: {
+                        Label("1/3 - 2/3", image: "one-third")
+                    }
+                    Button {
+                        insertColumnsAfterBlock(block, ratios: [0.33, 0.33, 0.33])
+                    } label: {
+                        Label("3 Columns", image: "three-column")
+                    }
+                } label: {
+                    Label("Columns", systemImage: "rectangle.split.3x1")
+                }
+
+                Menu {
+                    Button {
+                        insertListAfterBlock(block, type: .bullet)
+                    } label: {
+                        Label("Bullet List", systemImage: "list.bullet")
+                    }
+                    Button {
+                        insertListAfterBlock(block, type: .numbered)
+                    } label: {
+                        Label("Numbered List", systemImage: "list.number")
+                    }
+                    Button {
+                        insertListAfterBlock(block, type: .checkbox)
+                    } label: {
+                        Label("Checkbox List", systemImage: "checklist")
+                    }
+                } label: {
+                    Label("Lists", systemImage: "list.bullet.indent")
+                }
+
+                Divider()
+
+                Button {
+                    insertFilePathAfterBlock(block)
+                } label: {
+                    Label("File Link", systemImage: "doc.badge.arrow.up")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14, height: 20)
+            }
+            .buttonStyle(.plain)
+            .offset(y: -2)
+
             // Drag handle icon
             Image(systemName: "square.grid.2x2.fill")
                 .font(.system(size: 10))
@@ -455,7 +630,7 @@ struct NotesEditorView: View {
                     HStack {
                         Image(systemName: "square.grid.2x2.fill")
                             .font(.system(size: 10))
-                        Text(block.type == .text ? "Text Block" : block.type == .list ? "List" : block.type == .table ? "Table" : block.type == .accordion ? "Accordion" : block.type == .columns ? "Columns" : "Code Block")
+                        Text(block.displayName)
                             .font(.caption)
                     }
                     .padding(8)
@@ -465,6 +640,35 @@ struct NotesEditorView: View {
                 .onTapGesture {
                     // Select block content
                     selectBlockContent(block)
+                }
+                .contextMenu {
+                    Button {
+                        duplicateBlock(block)
+                    } label: {
+                        Label("Duplicate", systemImage: "plus.square.on.square")
+                    }
+
+                    Button {
+                        copyBlock(block)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+
+                    if copiedBlock != nil {
+                        Button {
+                            pasteBlockAfter(block)
+                        } label: {
+                            Label("Paste After", systemImage: "doc.on.clipboard")
+                        }
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        removeBlock(block)
+                    } label: {
+                        Label("Delete \(block.displayName)", systemImage: "trash")
+                    }
                 }
 
             // Block content
@@ -485,6 +689,9 @@ struct NotesEditorView: View {
                         },
                         onExtractSelection: {
                             extractSelection(from: block)
+                        },
+                        onInsertBookmark: { url in
+                            insertBookmark(url: url, afterBlock: block)
                         }
                     )
                 } else if let listData = block.listData {
@@ -544,6 +751,24 @@ struct NotesEditorView: View {
                         onDropAction: { dragged, target, edge in
                             handleBlockDrop(dragged: dragged, target: target, edge: edge)
                         },
+                        onInsertTextBlockAfter: { nestedBlock, targetAccordion in
+                            insertTextBlockAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        },
+                        onInsertTableAfter: { nestedBlock, targetAccordion, rows, cols in
+                            insertTableAfterInAccordion(nestedBlock, accordion: targetAccordion, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionAfter: { nestedBlock, targetAccordion, level in
+                            insertAccordionAfterInAccordion(nestedBlock, accordion: targetAccordion, level: level)
+                        },
+                        onInsertCodeBlockAfter: { nestedBlock, targetAccordion in
+                            insertCodeBlockAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        },
+                        onInsertListAfter: { nestedBlock, targetAccordion, type in
+                            insertListAfterInAccordion(nestedBlock, accordion: targetAccordion, type: type)
+                        },
+                        onInsertFilePathAfter: { nestedBlock, targetAccordion in
+                            insertFilePathAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        },
                         draggingBlock: $draggingBlock
                     )
                     .contextMenu {
@@ -568,6 +793,28 @@ struct NotesEditorView: View {
                             Label("Delete Code Block", systemImage: "trash")
                         }
                     }
+                } else if block.type == .quote {
+                    QuoteBlockView(
+                        block: block,
+                        selection: Binding(
+                            get: { selections[block.id] ?? AttributedTextSelection() },
+                            set: { selections[block.id] = $0 }
+                        ),
+                        focusState: $focusedBlockID,
+                        onDelete: {
+                            removeBlock(block)
+                        },
+                        onMerge: {
+                            mergeWithPreviousBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            removeBlock(block)
+                        } label: {
+                            Label("Delete Quote", systemImage: "trash")
+                        }
+                    }
                 } else if let imageData = block.imageData {
                     ImageBlockView(
                         imageData: imageData,
@@ -575,6 +822,34 @@ struct NotesEditorView: View {
                             removeBlock(block)
                         }
                     )
+                } else if let bookmarkData = block.bookmarkData {
+                    BookmarkBlockView(
+                        bookmarkData: bookmarkData,
+                        onDelete: {
+                            removeBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            removeBlock(block)
+                        } label: {
+                            Label("Delete Bookmark", systemImage: "trash")
+                        }
+                    }
+                } else if let filePathData = block.filePathData {
+                    FilePathBlockView(
+                        filePathData: filePathData,
+                        onDelete: {
+                            removeBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            removeBlock(block)
+                        } label: {
+                            Label("Delete File Link", systemImage: "trash")
+                        }
+                    }
                 } else if let columnData = block.columnData {
                     ColumnBlockView(
                         columnData: columnData,
@@ -593,6 +868,9 @@ struct NotesEditorView: View {
                         onInsertCodeBlock: { column in
                              insertCodeBlockInColumn(column)
                         },
+                        onInsertFilePath: { column in
+                             insertFilePathInColumn(column)
+                        },
                         onRemoveBlock: { nestedBlock in
                              removeBlockFromColumn(nestedBlock)
                         },
@@ -601,6 +879,60 @@ struct NotesEditorView: View {
                         },
                         onDropAction: { dragged, target, edge in
                              handleBlockDrop(dragged: dragged, target: target, edge: edge)
+                        },
+                        onInsertTextBlockAfter: { nestedBlock, column in
+                            insertTextBlockAfterInColumn(nestedBlock, column: column)
+                        },
+                        onInsertTableAfter: { nestedBlock, column, rows, cols in
+                            insertTableAfterInColumn(nestedBlock, column: column, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionAfter: { nestedBlock, column, level in
+                            insertAccordionAfterInColumn(nestedBlock, column: column, level: level)
+                        },
+                        onInsertCodeBlockAfter: { nestedBlock, column in
+                            insertCodeBlockAfterInColumn(nestedBlock, column: column)
+                        },
+                        onInsertListAfter: { nestedBlock, column, type in
+                            insertListAfterInColumn(nestedBlock, column: column, type: type)
+                        },
+                        onInsertFilePathAfter: { nestedBlock, column in
+                            insertFilePathAfterInColumn(nestedBlock, column: column)
+                        },
+                        onInsertTableInAccordion: { targetAccordion, rows, cols in
+                            insertTableInAccordion(targetAccordion, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionInAccordion: { targetAccordion, level in
+                            insertAccordionInAccordion(targetAccordion, level: level)
+                        },
+                        onInsertCodeBlockInAccordion: { targetAccordion in
+                            insertCodeBlockInAccordion(targetAccordion)
+                        },
+                        onRemoveBlockFromAccordion: { nestedBlock in
+                            removeBlockFromAccordion(nestedBlock)
+                        },
+                        onMergeNestedBlockInAccordion: { nestedBlock, accordion in
+                            mergeNestedBlock(nestedBlock, in: accordion)
+                        },
+                        onDropActionInAccordion: { dragged, target, edge in
+                            handleBlockDrop(dragged: dragged, target: target, edge: edge)
+                        },
+                        onInsertTextBlockAfterInAccordion: { nestedBlock, targetAccordion in
+                            insertTextBlockAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        },
+                        onInsertTableAfterInAccordion: { nestedBlock, targetAccordion, rows, cols in
+                            insertTableAfterInAccordion(nestedBlock, accordion: targetAccordion, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionAfterInAccordion: { nestedBlock, targetAccordion, level in
+                            insertAccordionAfterInAccordion(nestedBlock, accordion: targetAccordion, level: level)
+                        },
+                        onInsertCodeBlockAfterInAccordion: { nestedBlock, targetAccordion in
+                            insertCodeBlockAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        },
+                        onInsertListAfterInAccordion: { nestedBlock, targetAccordion, type in
+                            insertListAfterInAccordion(nestedBlock, accordion: targetAccordion, type: type)
+                        },
+                        onInsertFilePathAfterInAccordion: { nestedBlock, targetAccordion in
+                            insertFilePathAfterInAccordion(nestedBlock, accordion: targetAccordion)
                         },
                         draggingBlock: $draggingBlock
                     )
@@ -617,6 +949,7 @@ struct NotesEditorView: View {
     }
 
     @State private var activeElementPopover: ElementPopover?
+    @State private var insertionTargetBlockID: UUID?  // Captured when popover opens
 
     enum ElementPopover: Identifiable {
         case table
@@ -657,8 +990,31 @@ struct NotesEditorView: View {
         let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
         var targetOrderIndex = sortedBlocks.count
 
-        if let focusedID = focusedBlockID,
+        // Use insertionTargetBlockID (captured when popover opens), fall back to activeBlockID or focusedBlockID
+        let effectiveFocusedID = insertionTargetBlockID ?? activeBlockID ?? focusedBlockID
+
+        // Clear the insertion target after using it
+        defer { insertionTargetBlockID = nil }
+
+        if let focusedID = effectiveFocusedID,
            let focusedBlock = sortedBlocks.first(where: { $0.id == focusedID }) {
+
+            // Check if focused block is an empty text block - replace it
+            if isTextBlockEmpty(focusedBlock) {
+                let orderIndex = focusedBlock.orderIndex
+
+                // Remove the empty text block
+                note.blocks.removeAll { $0.id == focusedBlock.id }
+                context.delete(focusedBlock)
+
+                // Insert new block at same position
+                let newBlock = createBlock(orderIndex)
+                note.blocks.append(newBlock)
+                context.insert(newBlock)
+
+                try? context.save()
+                return
+            }
 
             // Default: Insert after focused block
             targetOrderIndex = focusedBlock.orderIndex + 1
@@ -667,7 +1023,7 @@ struct NotesEditorView: View {
             if let selection = selections[focusedID],
                let text = focusedBlock.text,
                !text.characters.isEmpty {
-                
+
                 var splitIndex: AttributedString.Index?
                 switch selection.indices(in: text) {
                 case .insertionPoint(let index):
@@ -690,17 +1046,17 @@ struct NotesEditorView: View {
                      for block in note.blocks where block.orderIndex >= targetOrderIndex {
                          block.orderIndex += 2
                      }
-                     
+
                      // Create and insert NewBlock
                      let newBlock = createBlock(targetOrderIndex)
                      note.blocks.append(newBlock)
                      context.insert(newBlock)
-                     
+
                      // Create and insert SuffixBlock
                      let suffixBlock = NoteBlock(orderIndex: targetOrderIndex + 1, text: AttributedString(suffix), type: .text)
                      note.blocks.append(suffixBlock)
                      context.insert(suffixBlock)
-                     
+
                      try? context.save()
                      return
                 }
@@ -711,41 +1067,47 @@ struct NotesEditorView: View {
         for block in note.blocks where block.orderIndex >= targetOrderIndex {
             block.orderIndex += 1
         }
-        
+
         let newBlock = createBlock(targetOrderIndex)
         note.blocks.append(newBlock)
         context.insert(newBlock)
-        
-        // Ensure trailing text block if at end
-        if targetOrderIndex == note.blocks.count - 1 {
-             let trailing = NoteBlock(orderIndex: targetOrderIndex + 1, text: "", type: .text)
-             note.blocks.append(trailing)
-             context.insert(trailing)
-        }
-        
+
         try? context.save()
     }
 
     private func insertCodeBlock() {
-        if let focusedID = focusedBlockID,
+        let effectiveFocusedID = insertionTargetBlockID ?? activeBlockID ?? focusedBlockID
+        if let focusedID = effectiveFocusedID,
            let focusedBlock = findBlock(id: focusedID),
            let parentAccordion = focusedBlock.parentAccordion {
             insertCodeBlockInAccordion(parentAccordion)
             return
         }
-        
+
         // Root insertion logic
         let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
- 
+
         insertBlockAtRoot { index in
              NoteBlock(orderIndex: index, codeBlock: newCodeBlock, type: .code)
         }
     }
- 
+
+    private func insertQuote() {
+        insertBlockAtRoot { index in
+            let block = NoteBlock(orderIndex: index, text: "", type: .quote)
+            // Focus the new quote block
+            DispatchQueue.main.async {
+                self.focusedBlockID = block.id
+            }
+            return block
+        }
+    }
+
     private func insertTable(rows: Int, cols: Int) {
-        if let focusedID = focusedBlockID,
+        let effectiveFocusedID = insertionTargetBlockID ?? activeBlockID ?? focusedBlockID
+        if let focusedID = effectiveFocusedID,
            let focusedBlock = findBlock(id: focusedID),
            let parentAccordion = focusedBlock.parentAccordion {
             insertTableInAccordion(parentAccordion, rows: rows, cols: cols)
@@ -818,7 +1180,8 @@ struct NotesEditorView: View {
     }
 
     private func insertAccordion(level: AccordionData.HeadingLevel) {
-        if let focusedID = focusedBlockID,
+        let effectiveFocusedID = insertionTargetBlockID ?? activeBlockID ?? focusedBlockID
+        if let focusedID = effectiveFocusedID,
            let focusedBlock = findBlock(id: focusedID),
            let parentAccordion = focusedBlock.parentAccordion {
             insertAccordionInAccordion(parentAccordion, level: level)
@@ -861,8 +1224,6 @@ struct NotesEditorView: View {
         accordion.contentBlocks.append(tableBlock)
         context.insert(tableBlock)
 
-        // Ensure trailing text block in accordion
-        ensureTrailingTextBlockInAccordion(accordion)
         try? context.save()
     }
 
@@ -892,14 +1253,21 @@ struct NotesEditorView: View {
 
         // Focus the new nested accordion
         focusedBlockID = newAccordion.id
-        
-        ensureTrailingTextBlockInAccordion(parentAccordion)
+
         try? context.save()
     }
-    
+
     // MARK: - Column Operations
     
     private func insertColumns(ratios: [Double]) {
+        // Prevent nesting columns within columns
+        if let focusedID = focusedBlockID,
+           let focusedBlock = findBlock(id: focusedID),
+           focusedBlock.parentColumn != nil {
+            // Block is inside a column - don't allow nested columns
+            return
+        }
+
         let count = ratios.count
         print("Inserting \(count) columns with ratios: \(ratios)")
         let newColumnData = ColumnData(columnCount: count)
@@ -929,46 +1297,6 @@ struct NotesEditorView: View {
                 focusedBlockID = firstBlock.id
             }
             return block
-        }
-        
-        // Add a blank text block AFTER the columns so the user can continue typing easily
-        // We need to find where the columns were inserted and add a block after.
-        // insertBlockAtRoot inserts at 'index'. We can just append another one? 
-        // insertBlockAtRoot logic is complex (handling splits), so we should use it carefully.
-        // Actually, insertBlockAtRoot puts the column block in. 
-        // If we want a block AFTER it, we can call insertBlockAtRoot again? No, that would insert at current focus which is now INSIDE the column.
-        // We should manually append the text block after the column block.
-        
-        // Wait, insertBlockAtRoot returns the block but it's used inside a closure.
-        // Let's modify insertBlockAtRoot or just handle it here.
-        // Since we know we just inserted the column block, we can find it or just assume we are at the insertion point.
-        
-        // Simpler: Just rely on ensureTrailingTextBlock? No, that's only for the very end.
-        // If we inserted columns in the middle, we want a text block right after.
-        
-        // Let's manually insert the text block after the column block.
-        // We need the ID or reference of the inserted column block. `insertBlockAtRoot` doesn't return it to us easily (it returns it to the caller of the closure).
-        // Let's refactor slightly. 
-        // Or better: The user wants a clean place to type below.
-        // We can just find the column block we just created (it's the only one with this newColumnData).
-        // But we explicitly set focus to inside it.
-        
-        // We can do this:
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-             // Find the column block
-             if let colBlock = self.note.blocks.first(where: { $0.columnData?.id == newColumnData.id }) {
-                 let targetIndex = colBlock.orderIndex + 1
-                 
-                 // Shift subsequent blocks
-                 for b in self.note.blocks where b.orderIndex >= targetIndex {
-                     b.orderIndex += 1
-                 }
-                 
-                 let textBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .text)
-                 self.note.blocks.append(textBlock)
-                 self.context.insert(textBlock)
-                 try? self.context.save()
-             }
         }
     }
     
@@ -1010,21 +1338,95 @@ struct NotesEditorView: View {
         let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
-        
+
         let targetOrderIndex = column.blocks.count
-        
+
         let codeBlock = NoteBlock(orderIndex: targetOrderIndex, codeBlock: newCodeBlock, type: .code)
         codeBlock.parentColumn = column
         column.blocks.append(codeBlock)
         context.insert(codeBlock)
-        
+
         try? context.save()
     }
-    
+
+    private func insertFilePathInColumn(_ column: Column) {
+        // Use activeBlockID which persists even when focus is lost
+        let capturedFocusedID = activeBlockID ?? focusedBlockID
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Select a file or folder to link"
+        panel.prompt = "Link"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    let filePathData = FilePathData.create(from: url)
+                    self.context.insert(filePathData)
+
+                    // Find the focused block fresh from the column
+                    let focusedBlock = capturedFocusedID.flatMap { id in
+                        column.blocks.first { $0.id == id }
+                    }
+
+                    // Check if focused block is an empty text block - replace it
+                    if let focusedBlock = focusedBlock,
+                       self.isTextBlockEmpty(focusedBlock) {
+                        let orderIndex = focusedBlock.orderIndex
+
+                        // Remove the empty text block
+                        column.blocks.removeAll { $0.id == focusedBlock.id }
+                        self.context.delete(focusedBlock)
+
+                        // Insert at same position
+                        let newBlock = NoteBlock(orderIndex: orderIndex, filePathData: filePathData, type: .filePath)
+                        newBlock.parentColumn = column
+                        column.blocks.append(newBlock)
+                        self.context.insert(newBlock)
+                    } else if let focusedBlock = focusedBlock {
+                        // Insert after focused block
+                        let targetIndex = focusedBlock.orderIndex + 1
+
+                        for block in column.blocks where block.orderIndex >= targetIndex {
+                            block.orderIndex += 1
+                        }
+
+                        let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+                        newBlock.parentColumn = column
+                        column.blocks.append(newBlock)
+                        self.context.insert(newBlock)
+                    } else {
+                        // Append at end
+                        let sortedBlocks = column.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+                        let targetOrderIndex = (sortedBlocks.last?.orderIndex ?? -1) + 1
+
+                        let newBlock = NoteBlock(orderIndex: targetOrderIndex, filePathData: filePathData, type: .filePath)
+                        newBlock.parentColumn = column
+                        column.blocks.append(newBlock)
+                        self.context.insert(newBlock)
+                    }
+
+                    try? self.context.save()
+                }
+            }
+        }
+    }
+
     private func removeBlockFromColumn(_ block: NoteBlock) {
-        // If it's a text block and it's not the only one, or if it's empty, delete.
-        // If it's the only block, we might want to keep it empty?
-        // Actually, just delete.
+        // Remove from parent column's blocks array first
+        if let parentColumn = block.parentColumn {
+            parentColumn.blocks.removeAll { $0.id == block.id }
+
+            // Re-index remaining blocks
+            let sorted = parentColumn.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+            for (index, b) in sorted.enumerated() {
+                b.orderIndex = index
+            }
+        }
+
+        // Now delete the block
         context.delete(block)
         try? context.save()
     }
@@ -1066,8 +1468,6 @@ struct NotesEditorView: View {
         accordion.contentBlocks.append(codeBlockItem)
         context.insert(codeBlockItem)
 
-        // Ensure trailing text block in accordion
-        ensureTrailingTextBlockInAccordion(accordion)
         try? context.save()
     }
 
@@ -1084,40 +1484,7 @@ struct NotesEditorView: View {
             b.orderIndex -= 1
         }
 
-        // Ensure trailing text block in accordion
-        ensureTrailingTextBlockInAccordion(parentAccordion)
         try? context.save()
-    }
-
-    /// Ensures there's always a text block at the end of an accordion
-    private func ensureTrailingTextBlockInAccordion(_ accordion: AccordionData) {
-        let sortedBlocks = accordion.contentBlocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-
-        // If empty or last block is not text, add a text block
-        if sortedBlocks.isEmpty {
-            let newTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
-            newTextBlock.parentAccordion = accordion
-            accordion.contentBlocks.append(newTextBlock)
-            context.insert(newTextBlock)
-        } else if let lastBlock = sortedBlocks.last, lastBlock.type != .text {
-            let newTextBlock = NoteBlock(orderIndex: lastBlock.orderIndex + 1, text: "", type: .text)
-            newTextBlock.parentAccordion = accordion
-            accordion.contentBlocks.append(newTextBlock)
-            context.insert(newTextBlock)
-        }
-    }
-
-    /// Ensures there's always a text block at the end if the note ends with a component
-    private func ensureTrailingTextBlock() {
-        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
-        guard let lastBlock = sortedBlocks.last else { return }
-
-        // If the last block is not a text block, add one
-        if lastBlock.type != .text {
-            let newTextBlock = NoteBlock(orderIndex: lastBlock.orderIndex + 1, text: "", type: .text)
-            note.blocks.append(newTextBlock)
-            context.insert(newTextBlock)
-        }
     }
 
     private func removeBlock(_ block: NoteBlock) {
@@ -1155,8 +1522,55 @@ struct NotesEditorView: View {
             }
         }
 
-        ensureTrailingTextBlock()
         try? context.save()
+    }
+
+    // MARK: - Duplicate, Copy, Paste Block
+
+    private func duplicateBlock(_ block: NoteBlock) {
+        let newBlock = BlockCopyHelper.createCopy(from: block, context: context)
+        let insertIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= insertIndex {
+            b.orderIndex += 1
+        }
+
+        newBlock.orderIndex = insertIndex
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new block
+        DispatchQueue.main.async {
+            focusedBlockID = newBlock.id
+        }
+    }
+
+    private func copyBlock(_ block: NoteBlock) {
+        copiedBlock = block
+    }
+
+    private func pasteBlockAfter(_ targetBlock: NoteBlock) {
+        guard let source = copiedBlock else { return }
+
+        let newBlock = BlockCopyHelper.createCopy(from: source, context: context)
+        let insertIndex = targetBlock.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= insertIndex {
+            b.orderIndex += 1
+        }
+
+        newBlock.orderIndex = insertIndex
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new block
+        DispatchQueue.main.async {
+            focusedBlockID = newBlock.id
+        }
     }
 
     private func selectBlockContent(_ block: NoteBlock) {
@@ -1309,7 +1723,8 @@ struct NotesEditorView: View {
     }
 
     private func insertImage(url: String, alt: String?, width: Double?, height: Double?) {
-        if let focusedID = focusedBlockID,
+        let effectiveFocusedID = insertionTargetBlockID ?? activeBlockID ?? focusedBlockID
+        if let focusedID = effectiveFocusedID,
            let focusedBlock = findBlock(id: focusedID),
            let parentAccordion = focusedBlock.parentAccordion {
             insertImageInAccordion(parentAccordion, url: url, alt: alt, width: width, height: height)
@@ -1341,8 +1756,7 @@ struct NotesEditorView: View {
         imageBlock.parentAccordion = accordion
         accordion.contentBlocks.append(imageBlock)
         context.insert(imageBlock)
-        
-        ensureTrailingTextBlockInAccordion(accordion)
+
         try? context.save()
     }
 
@@ -1377,6 +1791,765 @@ struct NotesEditorView: View {
     private func insertCheckboxList() {
         insertList(type: .checkbox)
     }
+
+    // MARK: - File Path Operations
+
+    /// Shows a file picker to select a local file
+    private func showFilePathPicker() {
+        // Use activeBlockID which persists even when focus is lost (e.g., when clicking toolbar button)
+        let capturedFocusedID = activeBlockID ?? focusedBlockID
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Select a file or folder to link"
+        panel.prompt = "Link"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    self.insertFilePathAtFocusedBlock(url: url, focusedID: capturedFocusedID)
+                }
+            }
+        }
+    }
+
+    /// Checks if a text block is effectively empty (only whitespace/newlines)
+    private func isTextBlockEmpty(_ block: NoteBlock) -> Bool {
+        guard block.type == .text else { return false }
+        guard let text = block.text else { return true }
+        let plainText = String(text.characters)
+        return plainText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Inserts a file path block at the focused block's position
+    private func insertFilePathAtFocusedBlock(url: URL, focusedID: UUID?) {
+        let filePathData = FilePathData.create(from: url)
+        context.insert(filePathData)
+
+        // Find the current focused block fresh from the model
+        guard let focusedID = focusedID,
+              let focusedBlock = note.blocks.first(where: { $0.id == focusedID }) else {
+            // No focused block at root, check columns
+            if let focusedID = focusedID {
+                // Search in columns
+                for block in note.blocks {
+                    if let columnData = block.columnData {
+                        for column in columnData.columns {
+                            if let colBlock = column.blocks.first(where: { $0.id == focusedID }) {
+                                insertFilePathInColumnAtBlock(filePathData: filePathData, focusedBlock: colBlock, column: column)
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+            // Fallback: insert at end
+            let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+            let newIndex = (sortedBlocks.last?.orderIndex ?? -1) + 1
+            let newBlock = NoteBlock(orderIndex: newIndex, filePathData: filePathData, type: .filePath)
+            note.blocks.append(newBlock)
+            context.insert(newBlock)
+            try? context.save()
+            return
+        }
+
+        // Check if it's in a column
+        if let column = focusedBlock.parentColumn {
+            insertFilePathInColumnAtBlock(filePathData: filePathData, focusedBlock: focusedBlock, column: column)
+            return
+        }
+
+        // Root level block
+        // Check if focused block is an empty text block - replace it
+        if isTextBlockEmpty(focusedBlock) {
+            let orderIndex = focusedBlock.orderIndex
+
+            // Remove the empty text block from the array and delete it
+            note.blocks.removeAll { $0.id == focusedBlock.id }
+            context.delete(focusedBlock)
+
+            // Insert file path block at same position
+            let newBlock = NoteBlock(orderIndex: orderIndex, filePathData: filePathData, type: .filePath)
+            note.blocks.append(newBlock)
+            context.insert(newBlock)
+        } else {
+            // Insert after the focused block
+            let targetIndex = focusedBlock.orderIndex + 1
+
+            // Shift subsequent blocks
+            for block in note.blocks where block.orderIndex >= targetIndex {
+                block.orderIndex += 1
+            }
+
+            let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+            note.blocks.append(newBlock)
+            context.insert(newBlock)
+        }
+
+        try? context.save()
+    }
+
+    /// Helper to insert file path in a column at the focused block
+    private func insertFilePathInColumnAtBlock(filePathData: FilePathData, focusedBlock: NoteBlock, column: Column) {
+        // Check if focused block is an empty text block - replace it
+        if isTextBlockEmpty(focusedBlock) {
+            let orderIndex = focusedBlock.orderIndex
+
+            // Remove the empty text block
+            column.blocks.removeAll { $0.id == focusedBlock.id }
+            context.delete(focusedBlock)
+
+            // Insert file path block at same position
+            let newBlock = NoteBlock(orderIndex: orderIndex, filePathData: filePathData, type: .filePath)
+            newBlock.parentColumn = column
+            column.blocks.append(newBlock)
+            context.insert(newBlock)
+        } else {
+            // Insert after the focused block
+            let targetIndex = focusedBlock.orderIndex + 1
+
+            // Shift subsequent blocks in column
+            for block in column.blocks where block.orderIndex >= targetIndex {
+                block.orderIndex += 1
+            }
+
+            let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+            newBlock.parentColumn = column
+            column.blocks.append(newBlock)
+            context.insert(newBlock)
+        }
+
+        try? context.save()
+    }
+
+    // MARK: - Title Enter Key Handling
+    
+    private func setupTitleEventMonitor() {
+        if titleEventMonitor != nil { return }
+        
+        titleEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard self.isTitleFocused else { return event }
+            
+            // Enter key (keyCode 36)
+            if event.keyCode == 36 {
+                // Check if there's content below the title
+                if !self.note.blocks.isEmpty {
+                    DispatchQueue.main.async {
+                        self.insertTextBlockAtBeginning()
+                    }
+                    return nil // Consume the event to prevent newline in title
+                }
+            }
+            
+            return event
+        }
+    }
+    
+    private func removeTitleEventMonitor() {
+        if let monitor = titleEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            titleEventMonitor = nil
+        }
+    }
+    
+    /// Inserts an empty text block at the beginning of the page (orderIndex 0)
+    private func insertTextBlockAtBeginning() {
+        // Shift all existing blocks up by 1
+        for block in note.blocks {
+            block.orderIndex += 1
+        }
+        
+        // Create new text block at orderIndex 0
+        let newBlock = NoteBlock(orderIndex: 0, text: AttributedString(""), type: .text)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+        
+        // Focus the new block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+
+    // MARK: - Insert After Block Operations (+ Menu)
+
+    /// Inserts a text block after the specified block
+    private func insertTextBlockAfter(_ block: NoteBlock) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .text)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+
+    /// Inserts a table after the specified block
+    private func insertTableAfterBlock(_ block: NoteBlock, rows: Int, cols: Int) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newTable = TableData(rowCount: rows, columnCount: cols)
+        context.insert(newTable)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, table: newTable, type: .table)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts an accordion after the specified block
+    private func insertAccordionAfterBlock(_ block: NoteBlock, level: AccordionData.HeadingLevel) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newAccordion = AccordionData(level: level)
+        context.insert(newAccordion)
+
+        // Create initial text block inside the accordion
+        let initialTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+        initialTextBlock.parentAccordion = newAccordion
+        newAccordion.contentBlocks.append(initialTextBlock)
+        context.insert(initialTextBlock)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, accordion: newAccordion, type: .accordion)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the accordion heading
+        DispatchQueue.main.async {
+            self.focusedBlockID = newAccordion.id
+        }
+    }
+
+    /// Inserts an image after the specified block (opens image picker)
+    private func insertImageAfterBlock(_ block: NoteBlock) {
+        insertionTargetBlockID = block.id
+        activeElementPopover = .image
+    }
+
+    /// Inserts a code block after the specified block
+    private func insertCodeBlockAfterBlock(_ block: NoteBlock) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
+        let newCodeBlock = CodeBlockData(language: language)
+        context.insert(newCodeBlock)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, codeBlock: newCodeBlock, type: .code)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts a quote after the specified block
+    private func insertQuoteAfterBlock(_ block: NoteBlock) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .quote)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new quote block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+
+    /// Inserts columns after the specified block
+    private func insertColumnsAfterBlock(_ block: NoteBlock, ratios: [Double]) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let count = ratios.count
+        let newColumnData = ColumnData(columnCount: count)
+
+        // Create columns
+        for i in 0..<count {
+            let col = Column(orderIndex: i, widthRatio: ratios[i])
+            col.parentColumnData = newColumnData
+
+            // Create initial empty text block in each column
+            let textBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+            textBlock.parentColumn = col
+            col.blocks.append(textBlock)
+
+            newColumnData.columns.append(col)
+        }
+
+        context.insert(newColumnData)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, columnData: newColumnData, type: .columns)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus first block of first column
+        if let firstCol = newColumnData.columns.sorted(by: { $0.orderIndex < $1.orderIndex }).first,
+           let firstBlock = firstCol.blocks.first {
+            DispatchQueue.main.async {
+                self.focusedBlockID = firstBlock.id
+            }
+        }
+    }
+
+    /// Inserts a list after the specified block
+    private func insertListAfterBlock(_ block: NoteBlock, type: ListData.ListType) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in note.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newListData = ListData(listType: type)
+        context.insert(newListData)
+
+        // Create initial empty item
+        let initialItem = ListItem(orderIndex: 0, text: "")
+        initialItem.parentList = newListData
+        newListData.items.append(initialItem)
+        context.insert(initialItem)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, listData: newListData, type: .list)
+        note.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the first item
+        DispatchQueue.main.async {
+            self.focusedBlockID = initialItem.id
+        }
+    }
+
+    /// Inserts a file path link after the specified block (opens file picker)
+    private func insertFilePathAfterBlock(_ block: NoteBlock) {
+        let capturedBlockID = block.id
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Select a file or folder to link"
+        panel.prompt = "Link"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    guard let targetBlock = self.note.blocks.first(where: { $0.id == capturedBlockID }) else { return }
+                    let targetIndex = targetBlock.orderIndex + 1
+
+                    // Shift subsequent blocks
+                    for b in self.note.blocks where b.orderIndex >= targetIndex {
+                        b.orderIndex += 1
+                    }
+
+                    let filePathData = FilePathData.create(from: url)
+                    self.context.insert(filePathData)
+
+                    let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+                    self.note.blocks.append(newBlock)
+                    self.context.insert(newBlock)
+                    try? self.context.save()
+                }
+            }
+        }
+    }
+
+    // MARK: - Insert After Nested Block Operations (+ Menu for Accordions/Columns)
+
+    /// Inserts a text block after a nested block in an accordion
+    private func insertTextBlockAfterInAccordion(_ block: NoteBlock, accordion: AccordionData) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .text)
+        newBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+
+    /// Inserts a table after a nested block in an accordion
+    private func insertTableAfterInAccordion(_ block: NoteBlock, accordion: AccordionData, rows: Int, cols: Int) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newTable = TableData(rowCount: rows, columnCount: cols)
+        context.insert(newTable)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, table: newTable, type: .table)
+        newBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts an accordion after a nested block in an accordion
+    private func insertAccordionAfterInAccordion(_ block: NoteBlock, accordion: AccordionData, level: AccordionData.HeadingLevel) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newAccordion = AccordionData(level: level)
+        context.insert(newAccordion)
+
+        // Create initial text block inside the nested accordion
+        let initialTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+        initialTextBlock.parentAccordion = newAccordion
+        newAccordion.contentBlocks.append(initialTextBlock)
+        context.insert(initialTextBlock)
+
+        let accordionBlock = NoteBlock(orderIndex: targetIndex, accordion: newAccordion, type: .accordion)
+        accordionBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(accordionBlock)
+        context.insert(accordionBlock)
+        try? context.save()
+
+        // Focus the new nested accordion
+        DispatchQueue.main.async {
+            self.focusedBlockID = newAccordion.id
+        }
+    }
+
+    /// Inserts a code block after a nested block in an accordion
+    private func insertCodeBlockAfterInAccordion(_ block: NoteBlock, accordion: AccordionData) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
+        let newCodeBlock = CodeBlockData(language: language)
+        context.insert(newCodeBlock)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, codeBlock: newCodeBlock, type: .code)
+        newBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts a list after a nested block in an accordion
+    private func insertListAfterInAccordion(_ block: NoteBlock, accordion: AccordionData, type: ListData.ListType) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newListData = ListData(listType: type)
+        context.insert(newListData)
+
+        // Create initial empty item
+        let initialItem = ListItem(orderIndex: 0, text: "")
+        initialItem.parentList = newListData
+        newListData.items.append(initialItem)
+        context.insert(initialItem)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, listData: newListData, type: .list)
+        newBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the first item
+        DispatchQueue.main.async {
+            self.focusedBlockID = initialItem.id
+        }
+    }
+
+    /// Inserts a file path link after a nested block in an accordion (opens file picker)
+    private func insertFilePathAfterInAccordion(_ block: NoteBlock, accordion: AccordionData) {
+        let capturedBlockID = block.id
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Select a file or folder to link"
+        panel.prompt = "Link"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    guard let targetBlock = accordion.contentBlocks.first(where: { $0.id == capturedBlockID }) else { return }
+                    let targetIndex = targetBlock.orderIndex + 1
+
+                    // Shift subsequent blocks
+                    for b in accordion.contentBlocks where b.orderIndex >= targetIndex {
+                        b.orderIndex += 1
+                    }
+
+                    let filePathData = FilePathData.create(from: url)
+                    self.context.insert(filePathData)
+
+                    let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+                    newBlock.parentAccordion = accordion
+                    accordion.contentBlocks.append(newBlock)
+                    self.context.insert(newBlock)
+                    try? self.context.save()
+                }
+            }
+        }
+    }
+
+    /// Inserts a text block after a nested block in a column
+    private func insertTextBlockAfterInColumn(_ block: NoteBlock, column: Column) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .text)
+        newBlock.parentColumn = column
+        column.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the new block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+
+    /// Inserts a table after a nested block in a column
+    private func insertTableAfterInColumn(_ block: NoteBlock, column: Column, rows: Int, cols: Int) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newTable = TableData(rowCount: rows, columnCount: cols)
+        context.insert(newTable)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, table: newTable, type: .table)
+        newBlock.parentColumn = column
+        column.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts an accordion after a nested block in a column
+    private func insertAccordionAfterInColumn(_ block: NoteBlock, column: Column, level: AccordionData.HeadingLevel) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newAccordion = AccordionData(level: level)
+        context.insert(newAccordion)
+
+        // Create initial text block inside the accordion
+        let initialTextBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+        initialTextBlock.parentAccordion = newAccordion
+        newAccordion.contentBlocks.append(initialTextBlock)
+        context.insert(initialTextBlock)
+
+        let accordionBlock = NoteBlock(orderIndex: targetIndex, accordion: newAccordion, type: .accordion)
+        accordionBlock.parentColumn = column
+        column.blocks.append(accordionBlock)
+        context.insert(accordionBlock)
+        try? context.save()
+
+        // Focus the accordion heading
+        DispatchQueue.main.async {
+            self.focusedBlockID = newAccordion.id
+        }
+    }
+
+    /// Inserts a code block after a nested block in a column
+    private func insertCodeBlockAfterInColumn(_ block: NoteBlock, column: Column) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
+        let newCodeBlock = CodeBlockData(language: language)
+        context.insert(newCodeBlock)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, codeBlock: newCodeBlock, type: .code)
+        newBlock.parentColumn = column
+        column.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+    }
+
+    /// Inserts a list after a nested block in a column
+    private func insertListAfterInColumn(_ block: NoteBlock, column: Column, type: ListData.ListType) {
+        let targetIndex = block.orderIndex + 1
+
+        // Shift subsequent blocks
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+
+        let newListData = ListData(listType: type)
+        context.insert(newListData)
+
+        // Create initial empty item
+        let initialItem = ListItem(orderIndex: 0, text: "")
+        initialItem.parentList = newListData
+        newListData.items.append(initialItem)
+        context.insert(initialItem)
+
+        let newBlock = NoteBlock(orderIndex: targetIndex, listData: newListData, type: .list)
+        newBlock.parentColumn = column
+        column.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+
+        // Focus the first item
+        DispatchQueue.main.async {
+            self.focusedBlockID = initialItem.id
+        }
+    }
+
+    /// Inserts a file path link after a nested block in a column (opens file picker)
+    private func insertFilePathAfterInColumn(_ block: NoteBlock, column: Column) {
+        let capturedBlockID = block.id
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Select a file or folder to link"
+        panel.prompt = "Link"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    guard let targetBlock = column.blocks.first(where: { $0.id == capturedBlockID }) else { return }
+                    let targetIndex = targetBlock.orderIndex + 1
+
+                    // Shift subsequent blocks
+                    for b in column.blocks where b.orderIndex >= targetIndex {
+                        b.orderIndex += 1
+                    }
+
+                    let filePathData = FilePathData.create(from: url)
+                    self.context.insert(filePathData)
+
+                    let newBlock = NoteBlock(orderIndex: targetIndex, filePathData: filePathData, type: .filePath)
+                    newBlock.parentColumn = column
+                    column.blocks.append(newBlock)
+                    self.context.insert(newBlock)
+                    try? self.context.save()
+                }
+            }
+        }
+    }
+
+    // MARK: - Bookmark Operations
+
+    /// Inserts a bookmark block after a given block
+    private func insertBookmark(url: URL, afterBlock: NoteBlock? = nil) {
+        Task {
+            // Fetch metadata
+            var metadata: URLMetadata?
+            do {
+                metadata = try await URLMetadataFetcher.shared.fetch(url: url)
+            } catch {
+                // Continue without metadata
+            }
+
+            await MainActor.run {
+                let bookmarkData = BookmarkData(
+                    urlString: url.absoluteString,
+                    title: metadata?.title,
+                    descriptionText: metadata?.description,
+                    faviconURLString: metadata?.faviconURL?.absoluteString,
+                    ogImageURLString: metadata?.ogImageURL?.absoluteString,
+                    fetchedAt: Date()
+                )
+                context.insert(bookmarkData)
+
+                if let afterBlock = afterBlock {
+                    // Insert after the specified block
+                    let targetIndex = afterBlock.orderIndex + 1
+
+                    // Shift subsequent blocks
+                    for block in note.blocks where block.orderIndex >= targetIndex {
+                        block.orderIndex += 1
+                    }
+
+                    let newBlock = NoteBlock(orderIndex: targetIndex, bookmarkData: bookmarkData, type: .bookmark)
+                    note.blocks.append(newBlock)
+                    context.insert(newBlock)
+                } else {
+                    // Use the standard insertion method
+                    insertBlockAtRoot { index in
+                        NoteBlock(orderIndex: index, bookmarkData: bookmarkData, type: .bookmark)
+                    }
+                }
+
+                try? context.save()
+            }
+        }
+    }
 }
 
 // MARK: - Block Drop Delegate
@@ -1401,6 +2574,8 @@ struct BlockDropDelegate: DropDelegate {
     @Binding var dropState: DropState?
     let blockHeights: [UUID: CGFloat]
     let reorderBlock: (NoteBlock, NoteBlock, DropEdge) -> Void
+        var onDragNearEdge: ((ScrollDirection?) -> Void)?
+    let totalBlocks: Int
 
     func validateDrop(info: DropInfo) -> Bool {
         return info.hasItemsConforming(to: [UTType.noteBlock])
@@ -1422,6 +2597,26 @@ struct BlockDropDelegate: DropDelegate {
         if dropState?.targetID != block.id || dropState?.edge != edge {
             dropState = DropState(targetID: block.id, edge: edge)
         }
+        
+        // Check if dragging near top or bottom (within 40px)
+        // info.location is in the block's coordinate space
+        // For the first block (orderIndex == 0), if we're near its top (y < 40),
+        // we're likely near the top of the visible scroll area
+        // For the last block, if we're near its bottom (y > height - 40),
+        // we're likely near the bottom of the visible scroll area
+        
+        let isFirstBlock = block.orderIndex == 0
+        let isLastBlock = block.orderIndex == totalBlocks - 1
+        
+        var scrollDirection: ScrollDirection? = nil
+        
+        if isFirstBlock && y < 40 {
+            scrollDirection = .up
+        } else if isLastBlock && y > height - 40 {
+            scrollDirection = .down
+        }
+        
+        onDragNearEdge?(scrollDirection)
         
         return DropProposal(operation: .move)
     }

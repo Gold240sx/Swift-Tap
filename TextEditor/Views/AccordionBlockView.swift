@@ -24,6 +24,12 @@ struct AccordionBlockView: View {
     var onRemoveBlock: (NoteBlock) -> Void = { _ in }
     var onMergeNestedBlock: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void = { _, _, _ in }
+    var onInsertTextBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertTableAfter: (NoteBlock, AccordionData, Int, Int) -> Void = { _, _, _, _ in }
+    var onInsertAccordionAfter: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
+    var onInsertCodeBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertListAfter: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
+    var onInsertFilePathAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
     @Environment(\.modelContext) var context
     @State private var isHovering = false
     @State private var showTablePicker = false
@@ -161,13 +167,82 @@ struct AccordionBlockView: View {
 
     @ViewBuilder
     private func nestedBlockView(for block: NoteBlock) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: 4) {
+            // Plus button with insert menu
+            Menu {
+                Button {
+                    onInsertTextBlockAfter(block, accordion)
+                } label: {
+                    Label("Text Block", systemImage: "text.alignleft")
+                }
+
+                Button {
+                    onInsertTableAfter(block, accordion, 3, 3)
+                } label: {
+                    Label("Table", systemImage: "tablecells")
+                }
+
+                Button {
+                    onInsertAccordionAfter(block, accordion, .h2)
+                } label: {
+                    Label("Accordion", systemImage: "list.bullet.indent")
+                }
+
+                Button {
+                    onInsertCodeBlockAfter(block, accordion)
+                } label: {
+                    Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Menu {
+                    Button {
+                        onInsertListAfter(block, accordion, .bullet)
+                    } label: {
+                        Label("Bullet List", systemImage: "list.bullet")
+                    }
+                    Button {
+                        onInsertListAfter(block, accordion, .numbered)
+                    } label: {
+                        Label("Numbered List", systemImage: "list.number")
+                    }
+                    Button {
+                        onInsertListAfter(block, accordion, .checkbox)
+                    } label: {
+                        Label("Checkbox List", systemImage: "checklist")
+                    }
+                } label: {
+                    Label("Lists", systemImage: "list.bullet.indent")
+                }
+
+                Divider()
+
+                Button {
+                    onInsertFilePathAfter(block, accordion)
+                } label: {
+                    Label("File Link", systemImage: "doc.badge.arrow.up")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14, height: 20)
+            }
+            .buttonStyle(.plain)
+            .offset(y: -2)
+
             // Drag handle icon
             Image(systemName: "square.grid.2x2.fill")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .frame(width: 16, height: 20)
-                .padding(.bottom, 2)
+                .offset(y: -2)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        onRemoveBlock(block)
+                    } label: {
+                        Label("Delete \(block.displayName)", systemImage: "trash")
+                    }
+                }
                 .onDrag {
                     let provider = NSItemProvider(object: block.id.uuidString as NSString)
                     provider.suggestedName = "Nested Block"
@@ -258,6 +333,12 @@ struct AccordionBlockView: View {
                         onRemoveBlock: onRemoveBlock,
                         onMergeNestedBlock: onMergeNestedBlock,
                         onDropAction: onDropAction,
+                        onInsertTextBlockAfter: onInsertTextBlockAfter,
+                        onInsertTableAfter: onInsertTableAfter,
+                        onInsertAccordionAfter: onInsertAccordionAfter,
+                        onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                        onInsertListAfter: onInsertListAfter,
+                        onInsertFilePathAfter: onInsertFilePathAfter,
                         draggingBlock: $draggingBlock
                     )
                     .contextMenu {
@@ -294,6 +375,34 @@ struct AccordionBlockView: View {
                             onRemoveBlock(block)
                         } label: {
                             Label("Delete Image", systemImage: "trash")
+                        }
+                    }
+                } else if let bookmarkData = block.bookmarkData {
+                    BookmarkBlockView(
+                        bookmarkData: bookmarkData,
+                        onDelete: {
+                            onRemoveBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onRemoveBlock(block)
+                        } label: {
+                            Label("Delete Bookmark", systemImage: "trash")
+                        }
+                    }
+                } else if let filePathData = block.filePathData {
+                    FilePathBlockView(
+                        filePathData: filePathData,
+                        onDelete: {
+                            onRemoveBlock(block)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onRemoveBlock(block)
+                        } label: {
+                            Label("Delete File Link", systemImage: "trash")
                         }
                     }
                 }

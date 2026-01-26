@@ -49,16 +49,16 @@ struct TableEditorView: View {
                     // Table scroll area – consume taps so outer clear‑selection gesture does not fire when interacting with the table
                     ScrollView(.horizontal, showsIndicators: true) {
                         VStack(spacing: 0) {
-                            // Column Headers Row (Includes empty corner cell)
-                            HStack(spacing: 0) {
-                                if isEditing {
+                            // Column Headers Row (Includes empty corner cell) - only show when editing
+                            if isEditing {
+                                HStack(spacing: 0) {
                                     cornerCell
-                                }
-                                ForEach(0..<table.columnCount, id: \.self) { col in
-                                    columnHeaderCell(col)
+                                    ForEach(0..<table.columnCount, id: \.self) { col in
+                                        columnHeaderCell(col)
+                                    }
                                 }
                             }
-                            
+
                             // Table Content Grid (Includes row numbers in each row)
                             VStack(spacing: 0) {
                                 ForEach(0..<table.rowCount, id: \.self) { row in

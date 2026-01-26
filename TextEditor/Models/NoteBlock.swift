@@ -32,6 +32,12 @@ class NoteBlock {
     @Relationship(deleteRule: .cascade)
     var listData: ListData?
 
+    @Relationship(deleteRule: .cascade)
+    var bookmarkData: BookmarkData?
+
+    @Relationship(deleteRule: .cascade)
+    var filePathData: FilePathData?
+
     /// If this block is nested inside an accordion, this points to the parent accordion
     var parentAccordion: AccordionData?
 
@@ -41,7 +47,7 @@ class NoteBlock {
     var typeString: String
 
     enum BlockType: String, Codable {
-        case text, table, accordion, code, image, columns, list
+        case text, table, accordion, code, image, columns, list, quote, bookmark, filePath
     }
 
     var type: BlockType {
@@ -49,7 +55,30 @@ class NoteBlock {
         set { typeString = newValue.rawValue }
     }
 
-    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, imageData: ImageData? = nil, columnData: ColumnData? = nil, listData: ListData? = nil, type: BlockType = .text) {
+    var displayName: String {
+        switch type {
+        case .text: return "Text Block"
+        case .table: return "Table"
+        case .accordion: return "Accordion"
+        case .code: return "Code Block"
+        case .image: return "Image"
+        case .columns: return "Columns"
+        case .list:
+            if let listData = listData {
+                switch listData.listType {
+                case .bullet: return "Bullet List"
+                case .numbered: return "Numbered List"
+                case .checkbox: return "Checkbox List"
+                }
+            }
+            return "List"
+        case .quote: return "Quote"
+        case .bookmark: return "Bookmark"
+        case .filePath: return "File Link"
+        }
+    }
+
+    init(id: UUID = UUID(), orderIndex: Int, text: AttributedString? = nil, table: TableData? = nil, accordion: AccordionData? = nil, codeBlock: CodeBlockData? = nil, imageData: ImageData? = nil, columnData: ColumnData? = nil, listData: ListData? = nil, bookmarkData: BookmarkData? = nil, filePathData: FilePathData? = nil, type: BlockType = .text) {
         self.id = id
         self.orderIndex = orderIndex
         self.text = text
@@ -59,6 +88,8 @@ class NoteBlock {
         self.imageData = imageData
         self.columnData = columnData
         self.listData = listData
+        self.bookmarkData = bookmarkData
+        self.filePathData = filePathData
         self.typeString = type.rawValue
     }
 }

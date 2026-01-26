@@ -15,6 +15,8 @@ struct NoteMigrationHelper {
             
             // 1. Create text block if text exists OR if the note is completely empty (new note)
             if !note.text.characters.isEmpty || note.tables.isEmpty {
+                // For new notes (completely empty), create an empty text block
+                // The placeholder will be shown in TextBlockView
                 let textBlock = NoteBlock(orderIndex: currentIndex, text: note.text, type: .text)
                 note.blocks.append(textBlock)
                 context.insert(textBlock)

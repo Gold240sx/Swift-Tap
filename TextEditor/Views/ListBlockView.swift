@@ -181,7 +181,7 @@ struct ListItemView: View {
     @State private var eventMonitor: Any?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: listType == .bullet ? -8 : -3) {
             // List prefix
             listPrefix
                 .frame(width: 24, alignment: listType == .numbered ? .trailing : .center)
@@ -192,7 +192,7 @@ struct ListItemView: View {
                 Text((item.text ?? "") + "\n")
                     .font(.body)
                     .foregroundStyle(.clear)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 0)
                     .padding(.vertical, 0)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
