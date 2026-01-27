@@ -38,7 +38,9 @@ struct FormatStyleButtons: View {
         } label: {
             Image(systemName: "bold")
         }
+        #if os(iOS)
         .frame(width: 40, height: 40)
+        #endif
         .selectedBackground(state: SelectionState.isSelected(for: states.bold))
         Button {
             text.transformAttributes(in: &selection) { container in
@@ -49,7 +51,9 @@ struct FormatStyleButtons: View {
         } label: {
             Image(systemName: "italic")
         }
+        #if os(iOS)
         .frame(width: 40, height: 40)
+        #endif
         .selectedBackground(state: SelectionState.isSelected(for: states.italic))
         Button {
             text.transformAttributes(in: &selection) { container in
@@ -62,7 +66,9 @@ struct FormatStyleButtons: View {
         } label: {
             Image(systemName: "underline")
         }
+        #if os(iOS)
         .frame(width: 40, height: 40)
+        #endif
         .selectedBackground(state: SelectionState.isSelected(for: states.underline))
         Button {
             text.transformAttributes(in: &selection) { container in
@@ -75,7 +81,9 @@ struct FormatStyleButtons: View {
         } label: {
             Image(systemName: "strikethrough")
         }
+        #if os(iOS)
         .frame(width: 40, height: 40)
+        #endif
         .selectedBackground(state: SelectionState.isSelected(for: states.strikethrough))
     }
 }

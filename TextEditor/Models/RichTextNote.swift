@@ -20,11 +20,27 @@ import SwiftData
 
 @Model
 class RichTextNote {
+    enum NoteStatus: String, Codable, CaseIterable {
+        case saved
+        case temp
+        case deletingSoon = "Deleting Soon"
+        case deleted
+    }
+
     var text: AttributedString
     var createdOn: Date
     var updatedOn: Date
     var title: String = ""
     var category: Category?
+    var statusRaw: String = NoteStatus.saved.rawValue
+    
+    var status: NoteStatus {
+        get { NoteStatus(rawValue: statusRaw) ?? .saved }
+        set { statusRaw = newValue.rawValue }
+    }
+    
+    var movedToDeletedOn: Date?
+    var isPinned: Bool = false
     
     @Relationship(deleteRule: .nullify, inverse: \Tag.notes)
     var tags: [Tag] = []
@@ -39,7 +55,8 @@ class RichTextNote {
     var lastUsedCodeLanguage: String = "swift"
 
     var previewText: String {
-        blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
+        guard modelContext != nil else { return "" }
+        return blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
             .compactMap { block in
                 if let text = block.text {
                     return String(text.characters)
@@ -56,6 +73,16 @@ class RichTextNote {
         // Add title
         if !title.isEmpty {
             textParts.append(title)
+        }
+        
+        // Add category name
+        if let category = category {
+            textParts.append(category.name)
+        }
+        
+        // Add tag names
+        for tag in tags {
+            textParts.append(tag.name)
         }
         
         // Add legacy text field

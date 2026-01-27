@@ -23,9 +23,10 @@ struct MacEditorView: NSViewRepresentable {
         let textView = DynamicSizeTextView()
         textView.delegate = context.coordinator
 
-        // Transparent background
+        // Transparent background and no focus ring
         textView.drawsBackground = false
         textView.backgroundColor = .clear
+        textView.focusRingType = .none
 
         // Configure for auto-resize
         textView.isVerticallyResizable = true
@@ -47,14 +48,25 @@ struct MacEditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSTextView, context: Context) {
+        // Enforce styling
+        nsView.drawsBackground = false
+        nsView.backgroundColor = .clear
+        nsView.focusRingType = .none
+        
         // Compare contents to avoid loop
         let current = nsView.textStorage?.string ?? ""
         let newPlain = String(text.characters)
 
-        // Quick check on plain text first
+        // Only update if the content has changed externally
         if current != newPlain {
-            // Text is already normalized in textDidChange, so we can set it directly
+            let selectedRange = nsView.selectedRange()
             nsView.textStorage?.setAttributedString(NSAttributedString(text))
+            
+            // Restore selection safely
+            let newLength = nsView.textStorage?.length ?? 0
+            if selectedRange.location + selectedRange.length <= newLength {
+                nsView.setSelectedRange(selectedRange)
+            }
         }
     }
 
@@ -73,11 +85,17 @@ struct MacEditorView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             // Convert back to AttributedString and normalize fonts
             if let storage = textView.textStorage {
+                // Save selection
+                let selectedRange = textView.selectedRange()
+                
                 // Normalize fonts to remove font family/styles while preserving bold/italic
                 let normalized = FontNormalizer.normalizeFonts(storage)
                 
                 // Update the text view with normalized text first
                 textView.textStorage?.setAttributedString(normalized)
+                
+                // Restore selection
+                textView.setSelectedRange(selectedRange)
                 
                 // Then update the parent binding (which will also normalize, but that's idempotent)
                 parent.text = AttributedString(normalized)

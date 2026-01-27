@@ -51,13 +51,11 @@ struct NotesEditorView: View {
     @Environment(\.dismiss) var dismiss
     @Query(sort: \Category.name) private var categories: [Category]
     @Query(sort: \Tag.name) private var allTags: [Tag]
-    @State private var selectedCategory: String = Category.uncategorized
-    @State private var editCategories = false
-    @State private var editTags = false
     @FocusState private var focusedBlockID: UUID?
     @FocusState private var isTitleFocused: Bool
     @State private var selections: [UUID: AttributedTextSelection] = [:]
     @State private var activeBlockID: UUID?
+    @State private var showMetadataSheet = false
     @Environment(\.undoManager) var undoManager
     @State private var showJson = false
     @State private var dropState: DropState?
@@ -80,10 +78,25 @@ struct NotesEditorView: View {
             GeometryReader { scrollGeo in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
+                        if note.status == .deletingSoon {
+                            HStack {
+                                Image(systemName: "clock.badge.exclamationmark.fill")
+                                Text("Deleting soon")
+                                    .fontWeight(.medium)
+                                Spacer()
+                            }
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .foregroundStyle(.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.top, 8)
+                        }
+                        
                     // Document Title
                     TextField("Page Title", text: $note.title, axis: .vertical)
                         .font(.system(size: 34, weight: .bold))
                         .textFieldStyle(.plain)
+                        .padding(.top, 16)
                         .padding(.bottom, 8)
                         .id("scroll-top")
                         .focused($isTitleFocused)
@@ -343,107 +356,111 @@ struct NotesEditorView: View {
         try? context.save()
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8){
-            categorySelectionView
-            tagsSelectionView
-
-            mainEditorContent
+    @ToolbarContentBuilder
+    private var editorToolbar: some ToolbarContent {
+        #if os(iOS)
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                if note.blocks.isEmpty || (note.blocks.count == 1 && note.blocks.first?.text?.characters.isEmpty == true) {
+                    deleteNoteSafely()
+                }
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.backward")
+            }
         }
-        .padding([.horizontal, .bottom])
-            .navigationTitle("RichText Editor")
+        #else
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                showMetadataSheet.toggle()
+            } label: {
+                Label("Note Metadata", systemImage: "tag")
+            }
+            .popover(isPresented: $showMetadataSheet) {
+                MetadataSelectionSheet(note: note)
+            }
+            
+            Button {
+                showJson.toggle()
+            } label: {
+                Label("JSON Output", systemImage: "curlybraces")
+            }
+            .popover(isPresented: $showJson) {
+                JsonOutputView(note: note)
+                    .frame(width: 500, height: 600)
+            }
+        }
+        #endif
+
+        #if os(iOS)
+        ToolbarItemGroup(placement: .keyboard) {
+            keyboardToolbarContent
+        }
+        #else
+        ToolbarItemGroup(placement: .primaryAction) {
+            macToolbarContent
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private var keyboardToolbarContent: some View {
+        HStack {
+            FormatStyleButtons(text: currentText, selection: currentSelection)
+            
+            Button {
+                moreEditing.toggle()
+            } label: {
+                Image(systemName: "textformat")
+            }
+            .sheet(isPresented: $moreEditing) {
+                MoreFormattingView(text: currentText, selection: currentSelection)
+                    .presentationDetents([.height(200)])
+            }
+            
+            Spacer()
+            
+            Button {
+                focusedBlockID = nil
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+            }
+        }
+        .disabled(activeBlockID == nil)
+    }
+
+    @ViewBuilder
+    private var macToolbarContent: some View {
+        FormatStyleButtons(text: currentText, selection: currentSelection)
+        
+        Button {
+            moreEditing.toggle()
+        } label: {
+            Label("Format", systemImage: "textformat")
+        }
+        .help("Text Formatting (Aa)")
+        .popover(isPresented: $moreEditing) {
+            MoreFormattingView(text: currentText, selection: currentSelection)
+                .frame(width: 400, height: 250)
+        }
+    }
+
+    var body: some View {
+        mainEditorContent
+            .padding([.horizontal, .bottom])
+            .navigationTitle(note.title.isEmpty ? "Untitled Note" : note.title)
             #if os(iOS)
             .toolbarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()
             #endif
         .toolbar {
-            #if os(iOS)
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    if note.blocks.isEmpty || (note.blocks.count == 1 && note.blocks.first?.text?.characters.isEmpty == true) {
-                        deleteNoteSafely()
-                    }
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.backward")
-                }
-            }
-            #else
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        editCategories.toggle()
-                    } label: {
-                        Label("Manage Categories", systemImage: "square.and.pencil")
-                    }
-                    Button {
-                        editTags.toggle()
-                    } label: {
-                        Label("Manage Tags", systemImage: "tag")
-                    }
-                } label: {
-                    Label("Categories & Tags", systemImage: "tag")
-                }
-            }
-            #endif
-
-            #if os(iOS)
-            ToolbarItemGroup(placement: .keyboard) {
-                Group {
-                    FormatStyleButtons(text: currentText, selection: currentSelection)
-                    Spacer()
-                    Button {
-                        moreEditing.toggle()
-                    } label: {
-                        Image(systemName: "textformat.alt")
-                    }
-                    Button {
-                        focusedBlockID = nil
-                    } label: {
-                        Image(systemName: "keyboard.chevron.compact.down")
-                    }
-                }
-                .disabled(focusedBlockID == nil)
-            }
-            #else
-            ToolbarItemGroup(placement: .primaryAction) {
-                FormatStyleButtons(text: currentText, selection: currentSelection)
-                Button {
-                    moreEditing.toggle()
-                } label: {
-                    Image(systemName: "textformat.alt")
-                }
-            }
-
-            ToolbarItemGroup(placement: .secondaryAction) {
-                Button {
-                    showJson.toggle()
-                } label: {
-                    Image(systemName: "curlybraces")
-                }
-                .popover(isPresented: $showJson) {
-                    JsonOutputView(note: note)
-                        .frame(width: 500, height: 600)
-                }
-            }
-            #endif
+            editorToolbar
         }
         .onChange(of: focusedBlockID) { _, newValue in
             if let newValue {
                 activeBlockID = newValue
             }
         }
-        #if os(iOS)
-        .sheet(isPresented: $moreEditing) {
-            MoreFormattingView(text: currentText, selection: currentSelection)
-                .presentationDetents([.height(200)])
-        }
-        #else
-        .popover(isPresented: $moreEditing) {
-            MoreFormattingView(text: currentText, selection: currentSelection)
-                .frame(width: 400, height: 250)
-        }
-        #endif
         .onChange(of: note.blocks) {
             note.updatedOn = Date.now
         }
@@ -524,117 +541,6 @@ struct NotesEditorView: View {
     }
 
 
-    // MARK: - Category Selection View
-
-    @ViewBuilder
-    private var categorySelectionView: some View {
-        HStack {
-            Picker("Category", selection: $selectedCategory) {
-                Text(Category.uncategorized).tag(Category.uncategorized)
-                ForEach(categories) { category in
-                    Text(category.name).tag(category.name)
-                }
-            }
-            .buttonStyle(.bordered)
-            .onChange(of: selectedCategory) {
-                if let category = categories.first(where: {$0.name == selectedCategory}) {
-                    note.category = category
-                } else {
-                    note.category = nil
-                }
-                try? context.save()
-            }
-            Button {
-                editCategories.toggle()
-            } label: {
-                Label("Manage Categories", systemImage: "square.and.pencil")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(note.category != nil ? Color(hex: note.category!.hexColor)! : .accentColor)
-            #if os(iOS)
-            .sheet(isPresented: $editCategories, onDismiss: {
-                selectedCategory = note.category?.name ?? Category.uncategorized
-            }) {
-                CategoriesView()
-            }
-            #else
-            .popover(isPresented: $editCategories) {
-                CategoriesView()
-                    .frame(width: 400, height: 500)
-                    .onDisappear {
-                        selectedCategory = note.category?.name ?? Category.uncategorized
-                    }
-            }
-            #endif
-        }
-        .onAppear {
-            if let category = note.category {
-                selectedCategory = category.name
-            }
-        }
-    }
-    
-    private var tagsSelectionView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Tags")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    editTags.toggle()
-                } label: {
-                    Label("Manage Tags", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-            }
-            
-            if note.tags.isEmpty {
-                Text("No tags")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
-                    ForEach(note.tags) { tag in
-                        HStack(spacing: 4) {
-                            Image(systemName: "tag.fill")
-                                .font(.caption2)
-                                .foregroundStyle(Color(hex: tag.hexColor)!)
-                            Text(tag.name)
-                                .font(.caption)
-                                .lineLimit(1)
-                            Button {
-                                note.tags.removeAll { $0.id == tag.id }
-                                try? context.save()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color(hex: tag.hexColor)?.opacity(0.15) ?? Color.gray.opacity(0.1))
-                        .foregroundStyle(Color(hex: tag.hexColor) ?? .primary)
-                        .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding(.horizontal)
-        #if os(iOS)
-        .sheet(isPresented: $editTags) {
-            TagsSelectionView(note: note)
-        }
-        #else
-        .popover(isPresented: $editTags) {
-            TagsSelectionView(note: note)
-                .frame(width: 400, height: 500)
-        }
-        #endif
-    }
 
     // MARK: - Block Row View with Drag Handle
 

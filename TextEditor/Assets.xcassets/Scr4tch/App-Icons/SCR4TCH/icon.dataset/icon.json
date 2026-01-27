@@ -1,0 +1,80 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.13790,0.88893,1.00000,1.00000",
+      "srgb:0.00203,0.25329,1.00000,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "overlay",
+          "fill" : {
+            "linear-gradient" : [
+              "srgb:0.97375,1.00000,0.95589,1.00000",
+              "srgb:0.71273,0.92844,1.00000,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.30340446309840424,
+                "y" : 0.0832649350824377
+              },
+              "stop" : {
+                "x" : 0.4060629986702128,
+                "y" : 0.9475114087795249
+              }
+            }
+          },
+          "glass-specializations" : [
+            {
+              "value" : true
+            },
+            {
+              "appearance" : "light",
+              "value" : true
+            },
+            {
+              "idiom" : "square",
+              "value" : false
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "Scratch.svg",
+          "name" : "Scratch",
+          "position" : {
+            "scale" : 1.2,
+            "translation-in-points" : [
+              35.99853515625,
+              -0.45699999999999363
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

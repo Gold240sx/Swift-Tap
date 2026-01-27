@@ -44,10 +44,10 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		E6CC3A3A2F218213005A84EB /* Exceptions for "TextEditor" folder in "TextEditor" target */ = {
+		E6F6DF952F28A4560055E871 /* Exceptions for "TextEditor" folder in "TextEditor" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Examples/MarkdownPro,
+				Examples/TextEditor_Backup,
 			);
 			target = E6C8EB052F2034A600AA1B97 /* TextEditor */;
 		};
@@ -67,10 +67,10 @@
 		E6C8EB082F2034A600AA1B97 /* TextEditor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				E6CC3A3A2F218213005A84EB /* Exceptions for "TextEditor" folder in "TextEditor" target */,
+				E6F6DF952F28A4560055E871 /* Exceptions for "TextEditor" folder in "TextEditor" target */,
 			);
 			explicitFolders = (
-				Examples/MarkdownPro,
+				Examples/TextEditor_Backup,
 			);
 			path = TextEditor;
 			sourceTree = "<group>";
@@ -655,6 +655,8 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SCR4TCH;
+				INFOPLIST_KEY_CFBundleName = SCR4TCH;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -709,6 +711,8 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SCR4TCH;
+				INFOPLIST_KEY_CFBundleName = SCR4TCH;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
