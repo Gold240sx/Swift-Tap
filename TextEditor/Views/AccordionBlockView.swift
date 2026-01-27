@@ -28,11 +28,13 @@ struct AccordionBlockView: View {
     var onInsertTableAfter: (NoteBlock, AccordionData, Int, Int) -> Void = { _, _, _, _ in }
     var onInsertAccordionAfter: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void = { _, _, _ in }
     var onInsertCodeBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertQuoteAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onInsertListAfter: (NoteBlock, AccordionData, ListData.ListType) -> Void = { _, _, _ in }
     var onInsertFilePathAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
     var onCopyBlock: (NoteBlock) -> Void = { _ in }
     var onCutBlock: (NoteBlock) -> Void = { _ in }
     var onPasteBlockAfter: (NoteBlock, AccordionData) -> Void = { _, _ in }
+    var onInsertBookmark: (URL, NoteBlock) -> Void = { _, _ in }
     var copiedBlock: NoteBlock? = nil
     @Environment(\.modelContext) var context
     @State private var isHovering = false
@@ -187,6 +189,7 @@ struct AccordionBlockView: View {
                 onInsertTableAfter: onInsertTableAfter,
                 onInsertAccordionAfter: onInsertAccordionAfter,
                 onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                onInsertQuoteAfter: onInsertQuoteAfter,
                 onInsertListAfter: onInsertListAfter,
                 onInsertFilePathAfter: onInsertFilePathAfter,
                 onCopyBlock: onCopyBlock,
@@ -197,7 +200,8 @@ struct AccordionBlockView: View {
                 onInsertTable: onInsertTable,
                 onInsertAccordion: onInsertAccordion,
                 onInsertCodeBlock: onInsertCodeBlock,
-                onDropAction: onDropAction
+                onDropAction: onDropAction,
+                onInsertBookmark: onInsertBookmark
             )
         }
     }
@@ -247,6 +251,7 @@ struct NestedBlockControlsContent: View {
     let onInsertTableAfter: (NoteBlock, AccordionData, Int, Int) -> Void
     let onInsertAccordionAfter: (NoteBlock, AccordionData, AccordionData.HeadingLevel) -> Void
     let onInsertCodeBlockAfter: (NoteBlock, AccordionData) -> Void
+    let onInsertQuoteAfter: (NoteBlock, AccordionData) -> Void
     let onInsertListAfter: (NoteBlock, AccordionData, ListData.ListType) -> Void
     let onInsertFilePathAfter: (NoteBlock, AccordionData) -> Void
     let onCopyBlock: (NoteBlock) -> Void
@@ -258,6 +263,7 @@ struct NestedBlockControlsContent: View {
     let onInsertAccordion: (AccordionData, AccordionData.HeadingLevel) -> Void
     let onInsertCodeBlock: (AccordionData) -> Void
     let onDropAction: (NoteBlock, NoteBlock, DropEdge) -> Void
+    let onInsertBookmark: (URL, NoteBlock) -> Void
     
     @State private var isPlusHovered = false
     @State private var isGridHovered = false
@@ -288,6 +294,12 @@ struct NestedBlockControlsContent: View {
                     onInsertCodeBlockAfter(block, accordion)
                 } label: {
                     Label("Code Block", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                Button {
+                    onInsertQuoteAfter(block, accordion)
+                } label: {
+                    Label("Quote", systemImage: "text.quote")
                 }
 
                 Menu {
@@ -394,18 +406,11 @@ struct NestedBlockControlsContent: View {
                     .padding(8)
                     .background(Color.gray.opacity(0.2))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onDisappear {
-                        draggingBlock = nil
-                    }
+                    .cornerRadius(8)
                 }
-                // Also allowing drop on the entire row for better target area
-                .onDrop(of: [UTType.noteBlock], delegate: NestedBlockDropDelegate(
-                    block: block,
-                    draggingBlock: $draggingBlock,
-                    dropState: $dropState,
-                    blockHeights: blockHeights,
-                    reorderAction: onDropAction
-                ))
+                .onHover { hovering in
+                    isGridHovered = hovering
+                }
 
             // Block content
             Group {
@@ -422,7 +427,8 @@ struct NestedBlockControlsContent: View {
                         },
                         onMerge: {
                             onMergeNestedBlock(block, accordion)
-                        }
+                        },
+                        onInsertBookmark: { url in onInsertBookmark(url, block) }
                     )
                 } else if let listData = block.listData {
                     ListBlockView(
@@ -467,8 +473,10 @@ struct NestedBlockControlsContent: View {
                         onInsertTableAfter: onInsertTableAfter,
                         onInsertAccordionAfter: onInsertAccordionAfter,
                         onInsertCodeBlockAfter: onInsertCodeBlockAfter,
+                        onInsertQuoteAfter: onInsertQuoteAfter,
                         onInsertListAfter: onInsertListAfter,
                         onInsertFilePathAfter: onInsertFilePathAfter,
+                        onInsertBookmark: onInsertBookmark,
                         draggingBlock: $draggingBlock
                     )
                     .contextMenu {
@@ -476,6 +484,28 @@ struct NestedBlockControlsContent: View {
                             onRemoveBlock(block)
                         } label: {
                             Label("Delete Accordion", systemImage: "trash")
+                        }
+                    }
+                } else if block.type == .quote {
+                    QuoteBlockView(
+                        block: block,
+                        selection: Binding(
+                            get: { selections[block.id] ?? AttributedTextSelection() },
+                            set: { selections[block.id] = $0 }
+                        ),
+                        focusState: focusState,
+                        onDelete: {
+                            onRemoveBlock(block)
+                        },
+                        onMerge: {
+                            onMergeNestedBlock(block, accordion)
+                        }
+                    )
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onRemoveBlock(block)
+                        } label: {
+                            Label("Delete Quote", systemImage: "trash")
                         }
                     }
                 } else if let codeBlock = block.codeBlock {

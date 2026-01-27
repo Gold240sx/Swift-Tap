@@ -43,6 +43,46 @@ enum ScrollDirection {
     case down
 }
 
+class ScrollManager {
+    var scrollProxy: ScrollViewProxy?
+    var timer: Timer?
+    var direction: ScrollDirection?
+    
+    func startScrolling(direction: ScrollDirection) {
+        guard self.direction != direction || timer == nil else { return }
+        self.direction = direction
+        print("ScrollManager: Starting scroll \(direction)")
+        
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self = self, let direction = self.direction, let proxy = self.scrollProxy else { 
+                print("ScrollManager: Timer fired but missing dependencies")
+                return 
+            }
+            
+            Task { @MainActor in
+                withAnimation(.linear(duration: 0.05)) {
+                    switch direction {
+                    case .up:
+                        proxy.scrollTo("scroll-top", anchor: .top)
+                    case .down:
+                        proxy.scrollTo("scroll-bottom", anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+    
+    func stopScrolling() {
+        timer?.invalidate()
+        timer = nil
+        direction = nil
+    }
+}
+
+
+
+
 struct NotesEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var note: RichTextNote
@@ -65,14 +105,90 @@ struct NotesEditorView: View {
     @State private var blockPositions: [UUID: CGFloat] = [:] // Track block Y positions in scroll view
     @State private var scrollViewHeight: CGFloat = 0
     @State private var draggingBlock: NoteBlock?
-    @State private var copiedBlock: NoteBlock?
-    @State private var autoScrollTimer: Timer?
-    @State private var scrollProxy: ScrollViewProxy?
-    @State private var scrollDirection: ScrollDirection?
+    @State private var scrollManager = ScrollManager()
+    
+    @State private var copiedBlock: NoteBlock? //
     @State private var titleEventMonitor: Any?
     private let saveTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     // MARK: - Main Editor Content
+    
+    @ViewBuilder
+    private var editorTitleField: some View {
+        TextField("Page Title", text: $note.title, axis: .vertical)
+            .font(.system(size: 34, weight: .bold))
+            .textFieldStyle(.plain)
+            .padding(.bottom, 8)
+            .id("scroll-top")
+            .focused($isTitleFocused)
+            .onChange(of: note.title) {
+                note.updatedOn = Date.now
+            }
+            .onChange(of: isTitleFocused) { _, newValue in
+                if newValue {
+                    setupTitleEventMonitor()
+                } else {
+                    removeTitleEventMonitor()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func blocksList(scrollGeo: GeometryProxy) -> some View {
+        ForEach(note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
+            blockRowView(for: block)
+                .padding(4)
+                .background(
+                     GeometryReader { geo in
+                         let blockGlobalY = geo.frame(in: .global).minY
+                         let scrollGlobalY = scrollGeo.frame(in: .global).minY
+                         let relativeY = blockGlobalY - scrollGlobalY
+                         
+                         return Color.clear
+                             .preference(key: BlockPositionPreferenceKey.self, value: [block.id: relativeY])
+                             .onAppear {
+                                 blockHeights[block.id] = geo.size.height
+                                 blockPositions[block.id] = relativeY
+                             }
+                             .onChange(of: geo.size.height) { _, newHeight in
+                                 blockHeights[block.id] = newHeight
+                             }
+                     }
+                )
+                .overlay(alignment: .top) {
+                    if dropState?.targetID == block.id && dropState?.edge == .top {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.accentColor)
+                            .frame(height: 4)
+                            .padding(.top, -6)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if dropState?.targetID == block.id && dropState?.edge == .bottom {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.accentColor)
+                            .frame(height: 4)
+                            .padding(.bottom, -6)
+                    }
+                }
+                .onDrop(of: [UTType.noteBlock], delegate: BlockDropDelegate(
+                    block: block,
+                    draggingBlock: $draggingBlock,
+                    dropState: $dropState,
+                    blockHeights: blockHeights,
+                    blockPosition: blockPositions[block.id] ?? 0,
+                    scrollViewHeight: scrollViewHeight,
+                    reorderBlock: handleBlockDrop,
+                    onDragNearEdge: { direction in
+                        startAutoScroll(direction: direction)
+                    },
+                    onDragEnded: {
+                        stopAutoScroll()
+                    },
+                    totalBlocks: note.blocks.count
+                ))
+        }
+    }
     
     @ViewBuilder
     private var mainEditorContent: some View {
@@ -80,95 +196,24 @@ struct NotesEditorView: View {
             GeometryReader { scrollGeo in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                    // Document Title
-                    TextField("Page Title", text: $note.title, axis: .vertical)
-                        .font(.system(size: 34, weight: .bold))
-                        .textFieldStyle(.plain)
-                        .padding(.bottom, 8)
-                        .id("scroll-top")
-                        .focused($isTitleFocused)
-                        .onChange(of: note.title) {
-                            note.updatedOn = Date.now
-                        }
-                        .onChange(of: isTitleFocused) { _, newValue in
-                            if newValue {
-                                setupTitleEventMonitor()
-                            } else {
-                                removeTitleEventMonitor()
-                            }
-                        }
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear
-                                    .onAppear {
-                                        scrollProxy = proxy
-                                    }
-                            }
-                        )
-
-                    ForEach(note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })) { block in
-                    blockRowView(for: block)
-                        .padding(4)
-                        .background(
-                             GeometryReader { geo in
-                                 let blockGlobalY = geo.frame(in: .global).minY
-                                 let scrollGlobalY = scrollGeo.frame(in: .global).minY
-                                 let relativeY = blockGlobalY - scrollGlobalY
-                                 
-                                 return Color.clear
-                                     .preference(key: BlockPositionPreferenceKey.self, value: [block.id: relativeY])
-                                     .onAppear {
-                                         blockHeights[block.id] = geo.size.height
-                                         blockPositions[block.id] = relativeY
-                                     }
-                                     .onChange(of: geo.size.height) { _, newHeight in
-                                         blockHeights[block.id] = newHeight
-                                     }
-                             }
-                        )
-                        .overlay(alignment: .top) {
-                            if dropState?.targetID == block.id && dropState?.edge == .top {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.accentColor)
-                                    .frame(height: 4)
-                                    .padding(.top, -6)
-                            }
-                        }
-                        .overlay(alignment: .bottom) {
-                            if dropState?.targetID == block.id && dropState?.edge == .bottom {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.accentColor)
-                                    .frame(height: 4)
-                                    .padding(.bottom, -6)
-                            }
-                        }
-                        .onDrop(of: [UTType.noteBlock], delegate: BlockDropDelegate(
-                            block: block,
-                            draggingBlock: $draggingBlock,
-                            dropState: $dropState,
-                            blockHeights: blockHeights,
-                            blockPosition: blockPositions[block.id] ?? 0,
-                            scrollViewHeight: scrollViewHeight,
-                            reorderBlock: handleBlockDrop,
-                            onDragNearEdge: { direction in
-                                if let direction = direction {
-                                    startAutoScroll(direction: direction)
-                                } else {
-                                    stopAutoScroll()
+                        editorTitleField
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onAppear {
+                                            scrollManager.scrollProxy = proxy
+                                        }
                                 }
-                            },
-                            onDragEnded: {
-                                stopAutoScroll()
-                            },
-                            totalBlocks: note.blocks.count
-                        ))
-                    }
-                    
+                            )
+
+                        blocksList(scrollGeo: scrollGeo)
+                        
                         // Bottom spacer for scrolling
                         Color.clear
                             .frame(height: 1)
                             .id("scroll-bottom")
                     }
+                }
                     .coordinateSpace(name: "scroll")
                     .background(
                         Color.clear
@@ -177,11 +222,11 @@ struct NotesEditorView: View {
                                 draggingBlock: $draggingBlock,
                                 dropState: $dropState,
                                 onDragEnded: {
+                                    print("NotesEditorView: BackgroundDropDelegate onDragEnded")
                                     stopAutoScroll()
                                 }
                             ))
                     )
-                }
                 .padding(.bottom, 50) // Space at bottom to scroll
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -202,52 +247,29 @@ struct NotesEditorView: View {
                 }
                 .onAppear {
                     scrollViewHeight = scrollGeo.size.height
-                    scrollProxy = proxy
+                    scrollManager.scrollProxy = proxy
                 }
                 .onChange(of: scrollGeo.size.height) { _, newHeight in
                     scrollViewHeight = newHeight
                 }
             }
         }
-    }
     
-    private func startAutoScroll(direction: ScrollDirection) {
-        // Only start if direction changed or timer doesn't exist
-        guard scrollDirection != direction || autoScrollTimer == nil else { return }
-        scrollDirection = direction
-        
-        // Stop existing timer if any
-        autoScrollTimer?.invalidate()
-        
-        autoScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            // Stop scrolling if drag has ended
-            guard self.draggingBlock != nil else {
-                self.stopAutoScroll()
-                return
-            }
-            // Use current scrollDirection in case it changed
-            guard let currentDirection = self.scrollDirection else {
-                self.stopAutoScroll()
-                return
-            }
-            if let proxy = self.scrollProxy {
-                withAnimation(.linear(duration: 0.05)) {
-                    switch currentDirection {
-                    case .up:
-                        proxy.scrollTo("scroll-top", anchor: .top)
-                    case .down:
-                        proxy.scrollTo("scroll-bottom", anchor: .bottom)
-                    }
-                }
-            }
+    }
+
+    private func startAutoScroll(direction: ScrollDirection?) {
+        if let direction = direction {
+            scrollManager.startScrolling(direction: direction)
+        } else {
+            scrollManager.stopScrolling()
         }
     }
     
     private func stopAutoScroll() {
-        autoScrollTimer?.invalidate()
-        autoScrollTimer = nil
-        scrollDirection = nil
+        scrollManager.stopScrolling()
     }
+    
+
     
 
     var currentText: Binding<AttributedString> {
@@ -288,26 +310,85 @@ struct NotesEditorView: View {
     /// Recursively faults in all attributes of a block and its nested blocks
     private func faultInBlockAttributes(_ block: NoteBlock) {
         // Force fault resolution by accessing attributes
+        _ = block.id
         _ = block.text
         _ = block.type
         _ = block.orderIndex
         _ = block.typeString
         
-        // Handle nested blocks in accordions
-        if let accordion = block.accordion {
-            _ = accordion.heading
-            _ = accordion.level
-            for nestedBlock in accordion.contentBlocks {
-                faultInBlockAttributes(nestedBlock)
+        // Deep fault for each block type content
+        if let table = block.table {
+            _ = table.id
+            _ = table.title
+            _ = table.rowCount
+            _ = table.columnCount
+            for cell in table.cells {
+                _ = cell.id
+                _ = cell.content
+                _ = cell.row
+                _ = cell.column
             }
         }
         
-        // Handle nested blocks in columns
+        if let codeBlock = block.codeBlock {
+            _ = codeBlock.id
+            _ = codeBlock.code
+            _ = codeBlock.languageString
+            _ = codeBlock.themeString
+        }
+        
+        if let imageData = block.imageData {
+            _ = imageData.id
+            _ = imageData.urlString
+            _ = imageData.altText
+        }
+        
         if let columnData = block.columnData {
+            _ = columnData.id
+            _ = columnData.columnCount
             for column in columnData.columns {
+                _ = column.id
+                _ = column.orderIndex
+                _ = column.widthRatio
                 for nestedBlock in column.blocks {
                     faultInBlockAttributes(nestedBlock)
                 }
+            }
+        }
+        
+        if let listData = block.listData {
+            _ = listData.id
+            _ = listData.listTypeString
+            for item in listData.items {
+                _ = item.id
+                _ = item.text
+                _ = item.isChecked
+                _ = item.orderIndex
+            }
+        }
+        
+        if let bookmarkData = block.bookmarkData {
+            _ = bookmarkData.id
+            _ = bookmarkData.urlString
+            _ = bookmarkData.title
+            _ = bookmarkData.descriptionText
+        }
+        
+        if let filePathData = block.filePathData {
+            _ = filePathData.id
+            _ = filePathData.pathString
+            _ = filePathData.displayName
+        }
+        
+        // Handle nested blocks in accordions
+        if let accordion = block.accordion {
+            _ = accordion.id
+            _ = accordion.heading
+            _ = accordion.level
+            _ = accordion.levelString
+            _ = accordion.isExpanded
+            for nestedBlock in accordion.contentBlocks {
+                faultInBlockAttributes(nestedBlock)
             }
         }
     }
@@ -344,14 +425,10 @@ struct NotesEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8){
-            categorySelectionView
-            tagsSelectionView
-
+        VStack(alignment: .leading, spacing: 0){
             mainEditorContent
         }
         .padding([.horizontal, .bottom])
-            .navigationTitle("RichText Editor")
             #if os(iOS)
             .toolbarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()
@@ -371,18 +448,28 @@ struct NotesEditorView: View {
             #else
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button {
-                        editCategories.toggle()
-                    } label: {
-                        Label("Manage Categories", systemImage: "square.and.pencil")
+                    Section("Purpose") {
+                        statusSelectionView
                     }
-                    Button {
-                        editTags.toggle()
-                    } label: {
-                        Label("Manage Tags", systemImage: "tag")
+                    
+                    Section("Organization") {
+                        categorySelectionView
+                        
+                        Button {
+                            editCategories.toggle()
+                        } label: {
+                            Label("Manage Categories", systemImage: "square.and.pencil")
+                        }
+                        
+                        Button {
+                            editTags.toggle()
+                        } label: {
+                            Label("Manage Tags", systemImage: "tag")
+                        }
                     }
                 } label: {
-                    Label("Categories & Tags", systemImage: "tag")
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(.white)
                 }
             }
             #endif
@@ -421,6 +508,8 @@ struct NotesEditorView: View {
                 } label: {
                     Image(systemName: "curlybraces")
                 }
+                .help("JSON Output")
+
                 .popover(isPresented: $showJson) {
                     JsonOutputView(note: note)
                         .frame(width: 500, height: 600)
@@ -479,6 +568,23 @@ struct NotesEditorView: View {
         .onPasteCommand(of: [.text, .plainText, UTType.utf8PlainText]) { providers in
              pasteAtEnd(providers)
         }
+        #if os(iOS)
+        .sheet(isPresented: $editCategories) {
+            CategoriesView()
+        }
+        .sheet(isPresented: $editTags) {
+            TagsSelectionView(note: note)
+        }
+        #else
+        .popover(isPresented: $editCategories) {
+            CategoriesView()
+                .frame(width: 400, height: 500)
+        }
+        .popover(isPresented: $editTags) {
+            TagsSelectionView(note: note)
+                .frame(width: 400, height: 500)
+        }
+        #endif
         .popover(item: $activeElementPopover) { item in
             switch item {
             case .table:
@@ -524,116 +630,65 @@ struct NotesEditorView: View {
     }
 
 
-    // MARK: - Category Selection View
-
+    // MARK: - Purpose View
+    
     @ViewBuilder
-    private var categorySelectionView: some View {
-        HStack {
-            Picker("Category", selection: $selectedCategory) {
-                Text(Category.uncategorized).tag(Category.uncategorized)
-                ForEach(categories) { category in
-                    Text(category.name).tag(category.name)
-                }
-            }
-            .buttonStyle(.bordered)
-            .onChange(of: selectedCategory) {
-                if let category = categories.first(where: {$0.name == selectedCategory}) {
-                    note.category = category
+    private var statusSelectionView: some View {
+        Picker("Purpose", selection: Binding(
+            get: { note.status },
+            set: { newStatus in
+                note.status = newStatus
+                if newStatus == .deleted {
+                    note.movedToDeletedOn = Date.now
                 } else {
-                    note.category = nil
+                    note.movedToDeletedOn = nil
                 }
                 try? context.save()
             }
-            Button {
-                editCategories.toggle()
-            } label: {
-                Label("Manage Categories", systemImage: "square.and.pencil")
+        )) {
+            ForEach(RichTextNote.NoteStatus.allCases, id: \.self) { status in
+                Label(status.rawValue.capitalized, systemImage: status == .temp ? "clock" : (status == .deleted ? "trash" : "checkmark.circle"))
+                    .tag(status)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(note.category != nil ? Color(hex: note.category!.hexColor)! : .accentColor)
-            #if os(iOS)
-            .sheet(isPresented: $editCategories, onDismiss: {
-                selectedCategory = note.category?.name ?? Category.uncategorized
-            }) {
-                CategoriesView()
+        }
+    }
+    
+    @ViewBuilder
+    private var expirationInfoView: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock")
+            Text("Temp")
+                .fontWeight(.bold)
+        }
+        .font(.caption)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.orange.opacity(0.15))
+        .foregroundStyle(.orange)
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var categorySelectionView: some View {
+        Picker("Category", selection: $selectedCategory) {
+            Text(Category.uncategorized).tag(Category.uncategorized)
+            ForEach(categories) { category in
+                Text(category.name).tag(category.name)
             }
-            #else
-            .popover(isPresented: $editCategories) {
-                CategoriesView()
-                    .frame(width: 400, height: 500)
-                    .onDisappear {
-                        selectedCategory = note.category?.name ?? Category.uncategorized
-                    }
+        }
+        .onChange(of: selectedCategory) {
+            if let category = categories.first(where: {$0.name == selectedCategory}) {
+                note.category = category
+            } else {
+                note.category = nil
             }
-            #endif
+            try? context.save()
         }
         .onAppear {
             if let category = note.category {
                 selectedCategory = category.name
             }
         }
-    }
-    
-    private var tagsSelectionView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Tags")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    editTags.toggle()
-                } label: {
-                    Label("Manage Tags", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-            }
-            
-            if note.tags.isEmpty {
-                Text("No tags")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 6)], alignment: .leading, spacing: 6) {
-                    ForEach(note.tags) { tag in
-                        HStack(spacing: 4) {
-                            Image(systemName: "tag.fill")
-                                .font(.caption2)
-                                .foregroundStyle(Color(hex: tag.hexColor)!)
-                            Text(tag.name)
-                                .font(.caption)
-                                .lineLimit(1)
-                            Button {
-                                note.tags.removeAll { $0.id == tag.id }
-                                try? context.save()
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color(hex: tag.hexColor)?.opacity(0.15) ?? Color.gray.opacity(0.1))
-                        .foregroundStyle(Color(hex: tag.hexColor) ?? .primary)
-                        .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding(.horizontal)
-        #if os(iOS)
-        .sheet(isPresented: $editTags) {
-            TagsSelectionView(note: note)
-        }
-        #else
-        .popover(isPresented: $editTags) {
-            TagsSelectionView(note: note)
-                .frame(width: 400, height: 500)
-        }
-        #endif
     }
 
     // MARK: - Block Row View with Drag Handle
@@ -760,11 +815,14 @@ struct NotesEditorView: View {
                         onInsertAccordionAfter: { nestedBlock, targetAccordion, level in
                             insertAccordionAfterInAccordion(nestedBlock, accordion: targetAccordion, level: level)
                         },
-                        onInsertCodeBlockAfter: { nestedBlock, targetAccordion in
-                            insertCodeBlockAfterInAccordion(nestedBlock, accordion: targetAccordion)
+                        onInsertCodeBlockAfter: { nestedBlock, accordion in
+                            insertCodeBlockAfterInAccordion(nestedBlock, accordion: accordion)
                         },
-                        onInsertListAfter: { nestedBlock, targetAccordion, type in
-                            insertListAfterInAccordion(nestedBlock, accordion: targetAccordion, type: type)
+                        onInsertQuoteAfter: { block, accordion in
+                            self.insertQuoteAfterBlockInAccordion(block, accordion: accordion)
+                        },
+                        onInsertListAfter: { nestedBlock, accordion, type in
+                            insertListAfterInAccordion(nestedBlock, accordion: accordion, type: type)
                         },
                         onInsertFilePathAfter: { nestedBlock, targetAccordion in
                             insertFilePathAfterInAccordion(nestedBlock, accordion: targetAccordion)
@@ -899,14 +957,17 @@ struct NotesEditorView: View {
                         onInsertAccordionAfter: { nestedBlock, column, level in
                             insertAccordionAfterInColumn(nestedBlock, column: column, level: level)
                         },
-                        onInsertCodeBlockAfter: { nestedBlock, column in
-                            insertCodeBlockAfterInColumn(nestedBlock, column: column)
+                        onInsertCodeBlockAfter: { block, column in
+                            self.insertCodeBlockAfterInColumn(block, column: column)
                         },
-                        onInsertListAfter: { nestedBlock, column, type in
-                            insertListAfterInColumn(nestedBlock, column: column, type: type)
+                        onInsertQuoteAfter: { block, column in
+                            self.insertQuoteAfterBlockInColumn(block, column)
                         },
-                        onInsertFilePathAfter: { nestedBlock, column in
-                            insertFilePathAfterInColumn(nestedBlock, column: column)
+                        onInsertListAfter: { block, column, type in
+                            insertListAfterInColumn(block, column: column, type: type)
+                        },
+                        onInsertFilePathAfter: { block, column in
+                            insertFilePathAfterInColumn(block, column: column)
                         },
                         onCopyBlock: { nestedBlock in
                             copyBlockInColumn(nestedBlock)
@@ -917,7 +978,58 @@ struct NotesEditorView: View {
                         onPasteBlockAfter: { nestedBlock, column in
                             pasteBlockAfterInColumn(nestedBlock, column: column)
                         },
+                        onInsertBookmark: { url, block in
+                            insertBookmark(url: url, afterBlock: block)
+                        },
                         copiedBlock: copiedBlock,
+                        onInsertTableInAccordion: { accordion, rows, cols in
+                             insertTableInAccordion(accordion, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionInAccordion: { parent, level in
+                             insertAccordionInAccordion(parent, level: level)
+                        },
+                        onInsertCodeBlockInAccordion: { accordion in
+                             insertCodeBlockInAccordion(accordion)
+                        },
+                        onRemoveBlockFromAccordion: { block in
+                             removeBlockFromAccordion(block)
+                        },
+                        onMergeNestedBlockInAccordion: { block, accordion in
+                             mergeNestedBlock(block, in: accordion)
+                        },
+                        onDropActionInAccordion: { dragged, target, edge in
+                             handleBlockDrop(dragged: dragged, target: target, edge: edge)
+                        },
+                        onInsertTextBlockAfterInAccordion: { block, accordion in
+                             insertTextBlockAfterInAccordion(block, accordion: accordion)
+                        },
+                        onInsertTableAfterInAccordion: { block, accordion, rows, cols in
+                             insertTableAfterInAccordion(block, accordion: accordion, rows: rows, cols: cols)
+                        },
+                        onInsertAccordionAfterInAccordion: { block, accordion, level in
+                             insertAccordionAfterInAccordion(block, accordion: accordion, level: level)
+                        },
+                        onInsertCodeBlockAfterInAccordion: { block, accordion in
+                             insertCodeBlockAfterInAccordion(block, accordion: accordion)
+                        },
+                        onInsertListAfterInAccordion: { block, accordion, type in
+                             insertListAfterInAccordion(block, accordion: accordion, type: type)
+                        },
+                        onInsertFilePathAfterInAccordion: { block, accordion in
+                             insertFilePathAfterInAccordion(block, accordion: accordion)
+                        },
+                        onCopyBlockInAccordion: { block in
+                             copyBlockInAccordion(block)
+                        },
+                        onCutBlockInAccordion: { block in
+                             cutBlockInAccordion(block)
+                        },
+                        onPasteBlockAfterInAccordion: { block, accordion in
+                             pasteBlockAfterInAccordion(block, accordion: accordion)
+                        },
+                        onInsertQuoteAfterInAccordion: { block, accordion in
+                             self.insertQuoteAfterBlockInAccordion(block, accordion: accordion)
+                        },
                         draggingBlock: $draggingBlock
                     )
                 }
@@ -1457,8 +1569,17 @@ struct NotesEditorView: View {
     private func removeBlockFromAccordion(_ block: NoteBlock) {
         guard let parentAccordion = block.parentAccordion else { return }
 
+        // Clear focus if this block is focused
+        if focusedBlockID == block.id || activeBlockID == block.id {
+            focusedBlockID = nil
+            activeBlockID = nil
+        }
+
+        faultInBlockAttributes(block)
+
         let removedOrder = block.orderIndex
-        context.delete(block)
+        
+        // Remove from parent collection first
         parentAccordion.contentBlocks.removeAll(where: { $0.id == block.id })
 
         // Re-index remaining blocks
@@ -1466,17 +1587,42 @@ struct NotesEditorView: View {
             b.orderIndex -= 1
         }
 
+        // Perform deletion
+        context.delete(block)
+        
+        // Ensure the accordion always has at least one element
+        if parentAccordion.contentBlocks.isEmpty {
+            let emptyBlock = NoteBlock(orderIndex: 0, text: "", type: .text)
+            emptyBlock.parentAccordion = parentAccordion
+            parentAccordion.contentBlocks.append(emptyBlock)
+            context.insert(emptyBlock)
+            
+            // Focus the new empty block
+            DispatchQueue.main.async {
+                self.focusedBlockID = emptyBlock.id
+            }
+        }
+
         try? context.save()
     }
 
     private func removeBlock(_ block: NoteBlock) {
-        // Capture surrounding blocks before deletion
-        let prevBlock = note.blocks.first(where: { $0.orderIndex == block.orderIndex - 1 })
-        let nextBlock = note.blocks.first(where: { $0.orderIndex == block.orderIndex + 1 })
+        // Clear focus if this block is focused
+        if focusedBlockID == block.id || activeBlockID == block.id {
+            focusedBlockID = nil
+            activeBlockID = nil
+        }
 
-        // Delete the target block
+        faultInBlockAttributes(block)
+
+        // Capture surrounding blocks before deletion for potential merging
+        let sortedBlocks = note.blocks.sorted(by: { $0.orderIndex < $1.orderIndex })
         let removedOrder = block.orderIndex
-        context.delete(block)
+        
+        let prevBlock = sortedBlocks.first(where: { $0.orderIndex == removedOrder - 1 })
+        let nextBlock = sortedBlocks.first(where: { $0.orderIndex == removedOrder + 1 })
+
+        // Remove from parent collection
         note.blocks.removeAll(where: { $0.id == block.id })
 
         // Re‑index remaining blocks
@@ -1484,22 +1630,33 @@ struct NotesEditorView: View {
             b.orderIndex -= 1
         }
 
+        // Delete the block
+        context.delete(block)
+
         // If the removed block was NOT a text block, attempt to merge adjacent text blocks
         if block.type != .text {
             if let prev = prevBlock, let next = nextBlock,
                prev.type == .text, next.type == .text,
                let prevText = prev.text, let nextText = next.text {
-                // Combine the attributed strings
-                var combined = prevText
-                combined.append(AttributedString("\n")) // optional newline between blocks
-                combined.append(nextText)
-                prev.text = combined
+                
+                // Ensure adjacent blocks are still in the note and valid
+                if note.blocks.contains(where: { $0.id == prev.id }) && 
+                   note.blocks.contains(where: { $0.id == next.id }) {
+                    
+                    // Combine the attributed strings
+                    var combined = prevText
+                    combined.append(AttributedString("\n"))
+                    combined.append(nextText)
+                    prev.text = combined
 
-                // Remove the next block and shift indices
-                context.delete(next)
-                note.blocks.removeAll(where: { $0.id == next.id })
-                for b in note.blocks where b.orderIndex > next.orderIndex {
-                    b.orderIndex -= 1
+                    let nextOrder = next.orderIndex
+                    // Remove the next block and shift indices
+                    note.blocks.removeAll(where: { $0.id == next.id })
+                    context.delete(next)
+                    
+                    for b in note.blocks where b.orderIndex > nextOrder {
+                        b.orderIndex -= 1
+                    }
                 }
             }
         }
@@ -2145,7 +2302,47 @@ struct NotesEditorView: View {
             self.focusedBlockID = newBlock.id
         }
     }
-
+    
+    private func insertQuoteAfterBlockInColumn(_ block: NoteBlock, _ column: Column) {
+        let targetIndex = block.orderIndex + 1
+        
+        // Shift subsequent blocks in column
+        for b in column.blocks where b.orderIndex >= targetIndex {
+            b.orderIndex += 1
+        }
+        
+        let newBlock = NoteBlock(orderIndex: targetIndex, text: "", type: .quote)
+        newBlock.parentColumn = column
+        column.blocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+        
+        // Focus the new quote block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+    
+    private func insertQuoteAfterBlockInAccordion(_ block: NoteBlock, accordion: AccordionData) {
+        let titleOrder = block.orderIndex + 1
+        
+        // Shift subsequent blocks
+        for b in accordion.contentBlocks where b.orderIndex >= titleOrder {
+            b.orderIndex += 1
+        }
+        
+        let newBlock = NoteBlock(orderIndex: titleOrder, text: "", type: .quote)
+        newBlock.parentAccordion = accordion
+        accordion.contentBlocks.append(newBlock)
+        context.insert(newBlock)
+        try? context.save()
+        
+        // Focus the new quote block
+        DispatchQueue.main.async {
+            self.focusedBlockID = newBlock.id
+        }
+    }
+    
     /// Inserts columns after the specified block
     private func insertColumnsAfterBlock(_ block: NoteBlock, ratios: [Double]) {
         let targetIndex = block.orderIndex + 1
@@ -2587,17 +2784,28 @@ struct NotesEditorView: View {
                 context.insert(bookmarkData)
 
                 if let afterBlock = afterBlock {
-                    // Insert after the specified block
-                    let targetIndex = afterBlock.orderIndex + 1
+                    // Check if the afterBlock is an empty text block
+                    let isReplaceable = afterBlock.type == .text && (afterBlock.text?.characters.isEmpty ?? true)
 
-                    // Shift subsequent blocks
-                    for block in note.blocks where block.orderIndex >= targetIndex {
-                        block.orderIndex += 1
+                    if isReplaceable {
+                        // Replace the empty block
+                        afterBlock.type = .bookmark
+                        afterBlock.bookmarkData = bookmarkData
+                        afterBlock.text = nil
+                        focusedBlockID = nil // Reset focus to force refresh or just blur
+                    } else {
+                        // Insert after the specified block
+                        let targetIndex = afterBlock.orderIndex + 1
+
+                        // Shift subsequent blocks
+                        for block in note.blocks where block.orderIndex >= targetIndex {
+                            block.orderIndex += 1
+                        }
+
+                        let newBlock = NoteBlock(orderIndex: targetIndex, bookmarkData: bookmarkData, type: .bookmark)
+                        note.blocks.append(newBlock)
+                        context.insert(newBlock)
                     }
-
-                    let newBlock = NoteBlock(orderIndex: targetIndex, bookmarkData: bookmarkData, type: .bookmark)
-                    note.blocks.append(newBlock)
-                    context.insert(newBlock)
                 } else {
                     // Use the standard insertion method
                     insertBlockAtRoot { index in
@@ -2640,21 +2848,31 @@ struct BlockDropDelegate: DropDelegate {
     let totalBlocks: Int
 
     func validateDrop(info: DropInfo) -> Bool {
-        return info.hasItemsConforming(to: [UTType.noteBlock])
+        let valid = info.hasItemsConforming(to: [UTType.noteBlock, UTType.plainText, UTType.text])
+        print("BlockDropDelegate: validateDrop -> \(valid)")
+        return valid
     }
 
     func dropEntered(info: DropInfo) {
-        guard let dragging = draggingBlock, dragging.id != block.id else { return }
+        print("BlockDropDelegate: dropEntered for target \(block.id)")
+        guard let dragging = draggingBlock, dragging.id != block.id else { 
+            print("BlockDropDelegate: dropEntered IGNORED (dragging self or nil)")
+            return 
+        }
         // Initial state, will be updated in dropUpdated
         dropState = DropState(targetID: block.id, edge: .bottom)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard let dragging = draggingBlock, dragging.id != block.id else { return nil }
+        guard let dragging = draggingBlock, dragging.id != block.id else { 
+            return nil 
+        }
         
         let y = info.location.y
         let height = blockHeights[block.id] ?? 0
         let edge: DropEdge = y < height / 2 ? .top : .bottom
+        
+        // print("BlockDropDelegate: dropUpdated y=\(y) height=\(height) edge=\(edge) pos=\(blockPosition)")
         
         if dropState?.targetID != block.id || dropState?.edge != edge {
             dropState = DropState(targetID: block.id, edge: edge)
@@ -2689,6 +2907,9 @@ struct BlockDropDelegate: DropDelegate {
             scrollDirection = .down
         }
         
+        if let direction = scrollDirection {
+            print("BlockDropDelegate: Requesting scroll \(direction)")
+        }
         onDragNearEdge?(scrollDirection)
         
         return DropProposal(operation: .move)
@@ -2907,6 +3128,7 @@ struct BlockControlsView: View {
                     isGridHovered = hovering
                 }
                 .onDrag {
+                    print("BlockControlsView: onDrag STARTED for block \(block.id)")
                     let provider = NSItemProvider(object: block.id.uuidString as NSString)
                     provider.suggestedName = "Note Block"
                     provider.registerDataRepresentation(forTypeIdentifier: UTType.noteBlock.identifier, visibility: .all) { completion in

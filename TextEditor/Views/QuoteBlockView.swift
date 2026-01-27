@@ -26,7 +26,7 @@ struct QuoteBlockView: View {
             // Text content with left padding
             ZStack(alignment: .topLeading) {
                 // Hidden text for height calculation
-                Text((block.text ?? "") + "\n")
+                Text(String((block.text ?? "").characters) + "\n")
                     .font(.body)
                     .foregroundStyle(.clear)
                     .padding(.horizontal, 5)

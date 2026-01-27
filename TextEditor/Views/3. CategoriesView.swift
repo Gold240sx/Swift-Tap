@@ -64,8 +64,36 @@ struct CategoriesView: View {
                     .padding(.horizontal)
                 }
                 
+                if action == .none && !categories.isEmpty {
+                    HStack {
+                        Spacer()
+                        Button {
+                            withAnimation {
+                                action = .new
+                            }
+                        } label: {
+                            Label("New Category", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.bottom, 4)
+                    }
+                }
+
+                
                 if categories.isEmpty && action == .none {
-                    ContentUnavailableView("Create your first category", systemImage: "pencil.and.scribble")
+                    ContentUnavailableView {
+                        Label("Create your first category", systemImage: "pencil.and.scribble")
+                    } description: {
+                        Text("Categories help you organize your notes by topic.")
+                    } actions: {
+                        Button("Add Category") {
+                            withAnimation {
+                                action = .new
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else if !categories.isEmpty {
                     List {
                         ForEach(categories) { category in
@@ -114,7 +142,7 @@ struct CategoriesView: View {
                         action = .new
                     } label: {
                         Image(systemName: "plus")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                 }
             }

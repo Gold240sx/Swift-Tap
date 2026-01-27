@@ -16,17 +16,34 @@ struct ListBlockView: View {
 
     @Environment(\.modelContext) private var context
     @FocusState private var focusedItemID: UUID?
+    @State private var isEditing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // List title
-            TextField("List Title", text: Binding(
-                get: { listData.title ?? "" },
-                set: { listData.title = $0.isEmpty ? nil : $0 }
-            ))
-            .font(.system(size: 16, weight: .semibold))
-            .textFieldStyle(.plain)
+            HStack {
+                TextField("List Title", text: Binding(
+                    get: { listData.title ?? "" },
+                    set: { listData.title = $0.isEmpty ? nil : $0 }
+                ))
+                .font(.system(size: 16, weight: .semibold))
+                .textFieldStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isEditing.toggle()
+                    }
+                } label: {
+                    Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil.circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(isEditing ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isEditing ? "Done Editing" : "Edit List Items")
+            }
             .padding(.leading, 20)
+            .padding(.trailing, 8)
             .padding(.bottom, 15)
 
             // List items
@@ -39,12 +56,16 @@ struct ListBlockView: View {
                         get: { selections[item.id] ?? AttributedTextSelection() },
                         set: { selections[item.id] = $0 }
                     ),
+                    isEditing: isEditing,
                     focusState: focusState,
                     onEnter: {
                         insertItemAfter(item)
                     },
                     onBackspaceAtStart: {
                         handleBackspaceAtStart(for: item)
+                    },
+                    onDelete: {
+                        removeItem(item)
                     }
                 )
             }
@@ -174,14 +195,31 @@ struct ListItemView: View {
     let listType: ListData.ListType
     let number: Int
     @Binding var selection: AttributedTextSelection
+    let isEditing: Bool
     var focusState: FocusState<UUID?>.Binding
     var onEnter: () -> Void
     var onBackspaceAtStart: () -> Void
+    var onDelete: () -> Void
 
     @State private var eventMonitor: Any?
 
     var body: some View {
         HStack(alignment: .top, spacing: listType == .bullet ? -8 : -3) {
+            // Delete button (Quick Delete)
+            if isEditing {
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(.plain)
+                .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity), removal: .opacity))
+                .padding(.trailing, 4)
+                .offset(y: listType == .bullet ? -4 : -2)
+            }
+
             // List prefix
             listPrefix
                 .frame(width: 24, alignment: listType == .numbered ? .trailing : .center)
@@ -189,7 +227,7 @@ struct ListItemView: View {
             // Text content
             ZStack(alignment: .topLeading) {
                 // Hidden text for height calculation
-                Text((item.text ?? "") + "\n")
+                Text(String((item.text ?? "").characters) + "\n")
                     .font(.body)
                     .foregroundStyle(.clear)
                     .padding(.horizontal, 0)

@@ -29,7 +29,6 @@ struct RichTextEditorView: View {
                 .focused($isFocused)
                 .padding()
                 .scrollBounceBehavior(.basedOnSize)
-                .navigationTitle("RichText Editor")
                 .toolbarTitleDisplayMode(.inlineLarge)
                 .toolbar {
                     #if os(iOS)

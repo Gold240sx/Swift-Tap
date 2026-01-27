@@ -56,6 +56,7 @@ enum SelectionState {
         let containers = selectedAttributeContainers(text: text, selection: &selection)
 
         func collapsed(_ values: [Bool]) -> ToggleState {
+            guard !values.isEmpty else { return .off }
             return values.allSatisfy { $0 } ? .on : .off
         }
 
