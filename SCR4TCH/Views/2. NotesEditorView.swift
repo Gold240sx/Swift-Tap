@@ -289,20 +289,46 @@ struct NotesEditorView: View {
     var currentText: Binding<AttributedString> {
         Binding(
             get: {
-                if let id = activeBlockID, let block = (note.blocks ?? []).first(where: { $0.id == id }) {
-                    return block.text ?? AttributedString("")
+                if let id = activeBlockID {
+                    if let block = findBlockRecursive(id: id, in: note.blocks) {
+                        return block.text ?? AttributedString("")
+                    }
                 }
                 return AttributedString("")
             },
             set: { newValue in
-                if let id = activeBlockID, let block = (note.blocks ?? []).first(where: { $0.id == id }) {
-                    // Store text directly without transformation to preserve selection
-                    // Colors are already properly set (intentColor + adaptive foregroundColor)
-                    // by MoreFormattingView when the user picks a color
-                    block.text = newValue
+                if let id = activeBlockID {
+                    if let block = findBlockRecursive(id: id, in: note.blocks) {
+                        // Store text directly without transformation to preserve selection
+                        // Colors are already properly set (intentColor + adaptive foregroundColor)
+                        // by MoreFormattingView when the user picks a color
+                        block.text = newValue
+                    }
                 }
             }
         )
+    }
+    
+    // Helper for finding blocks recursively
+    private func findBlockRecursive(id: UUID, in blocks: [NoteBlock]?) -> NoteBlock? {
+        guard let blocks = blocks else { return nil }
+        for block in blocks {
+            if block.id == id { return block }
+            
+            if let accordion = block.accordion {
+                if let found = findBlockRecursive(id: id, in: accordion.contentBlocks) {
+                    return found
+                }
+            }
+            if let colData = block.columnData {
+                for column in colData.columns ?? [] {
+                    if let found = findBlockRecursive(id: id, in: column.blocks) {
+                        return found
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     var currentSelection: Binding<AttributedTextSelection> {

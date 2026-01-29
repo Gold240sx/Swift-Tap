@@ -35,10 +35,23 @@ struct TextBlockView: View {
                     set: { block.text = $0 }
                 ),
                 selection: $selection,
-                selectedRange: $selectedRange, // Pass binding
+                selectedRange: Binding(
+                    get: { selectedRange },
+                    set: { newValue in
+                        selectedRange = newValue
+                        if let id = block.id, let text = block.text {
+                            let nsAttr = NSAttributedString(text)
+                            if newValue.location != NSNotFound && newValue.location + newValue.length <= nsAttr.length {
+                                let selectedText = nsAttr.attributedSubstring(from: newValue).string
+//                                print("Selection - ID: \(id), Range: \(newValue), Text: \"\(selectedText)\"")
+                            }
+                        }
+                    }
+                ),
                 font: isNested ? .systemFont(ofSize: langManager.scaledFontSize(13)) : .systemFont(ofSize: langManager.scaledFontSize(NSFont.systemFontSize)),
                 onURLPaste: handleURLPaste
             )
+            .focused(focusState, equals: block.id)
             
             // Placeholder text
             if (block.text?.characters.isEmpty ?? true) && focusState.wrappedValue != block.id {

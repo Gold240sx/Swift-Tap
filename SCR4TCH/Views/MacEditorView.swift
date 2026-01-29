@@ -61,13 +61,13 @@ struct MacEditorView: NSViewRepresentable {
             return
         }
 
-        print("MacEditorView Update: receiving new text length \(text.characters.count)")
+        // print("MacEditorView Update: receiving new text length \(text.characters.count)")
         
         // Debug attributes at current selection
         let nsAttrDebug = NSAttributedString(text)
         if selectedRange.location < nsAttrDebug.length {
              let attrs = nsAttrDebug.attributes(at: selectedRange.location, effectiveRange: nil)
-             print("MacEditorView Update: attributes at \(selectedRange.location): \(attrs)")
+            //  print("MacEditorView Update: attributes at \(selectedRange.location): \(attrs)")
         }
 
         // Apply new text

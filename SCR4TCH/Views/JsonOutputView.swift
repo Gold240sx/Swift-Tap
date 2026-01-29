@@ -32,15 +32,32 @@ struct JsonOutputView: View {
         
         var blocks: [[String: Any]] = []
         for block in (note.blocks ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) }) {
-            var bDict: [String: Any] = [
-                "id": block.id?.uuidString ?? "",
-                "type": "\(block.type)",
-                "order": block.orderIndex ?? 0
-            ]
+            blocks.append(serializeBlock(block))
+        }
+        dict["blocks"] = blocks
+        
+        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+           let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return "Error encoding JSON"
+    }
+
+    private func serializeBlock(_ block: NoteBlock) -> [String: Any] {
+        var dict: [String: Any] = [
+            "id": block.id?.uuidString ?? "",
+            "type": block.type.rawValue,
+            "order": block.orderIndex ?? 0
+        ]
+        
+        switch block.type {
+        case .text, .quote:
+            if let text = block.text {
+                dict["content"] = String(text.characters)
+            }
             
-            if block.type == .text, let text = block.text {
-                bDict["content"] = String(text.characters)
-            } else if block.type == .table, let table = block.table {
+        case .table:
+            if let table = block.table {
                 var tDict: [String: Any] = [
                     "title": table.title ?? "",
                     "rows": table.rowCount ?? 0,
@@ -57,17 +74,97 @@ struct JsonOutputView: View {
                     }
                 }
                 tDict["cells"] = cells
-                bDict["table"] = tDict
+                dict["table"] = tDict
             }
-            blocks.append(bDict)
+            
+        case .accordion:
+            if let accordion = block.accordion {
+                dict["heading"] = String(accordion.heading.characters)
+                dict["isExpanded"] = accordion.isExpanded
+                dict["level"] = accordion.level.rawValue
+                
+                let nestedBlocks = (accordion.contentBlocks ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) })
+                var nestedJson: [[String: Any]] = []
+                for nestedBlock in nestedBlocks {
+                    nestedJson.append(serializeBlock(nestedBlock))
+                }
+                dict["blocks"] = nestedJson
+            }
+
+        case .columns:
+            if let colData = block.columnData {
+                dict["columnCount"] = colData.columnCount
+                var columnsJson: [[String: Any]] = []
+                for column in (colData.columns ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) }) {
+                    var colDict: [String: Any] = [
+                        "id": column.id?.uuidString ?? "",
+                        "order": column.orderIndex ?? 0,
+                        "widthRatio": column.widthRatio ?? 1.0
+                    ]
+                    let colBlocks = (column.blocks ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) })
+                    var colBlocksJson: [[String: Any]] = []
+                    for colBlock in colBlocks {
+                        colBlocksJson.append(serializeBlock(colBlock))
+                    }
+                    colDict["blocks"] = colBlocksJson
+                    columnsJson.append(colDict)
+                }
+                dict["columns"] = columnsJson
+            }
+
+        case .list:
+            if let listData = block.listData {
+                dict["listType"] = listData.listType.rawValue
+                dict["title"] = listData.title
+                var itemsJson: [[String: Any]] = []
+                for item in (listData.items ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) }) {
+                    var itemDict: [String: Any] = [
+                        "id": item.id?.uuidString ?? "",
+                        "order": item.orderIndex ?? 0,
+                        "isChecked": item.isChecked ?? false
+                    ]
+                    if let text = item.text {
+                        itemDict["content"] = String(text.characters)
+                    }
+                    itemsJson.append(itemDict)
+                }
+                dict["items"] = itemsJson
+            }
+
+        case .code:
+            if let codeBlock = block.codeBlock {
+                dict["language"] = codeBlock.languageString
+                dict["code"] = codeBlock.code
+            }
+
+        case .image:
+            if let imageData = block.imageData {
+                dict["altText"] = imageData.altText
+                dict["url"] = imageData.urlString
+            }
+
+        case .bookmark:
+            if let bookmark = block.bookmarkData {
+                dict["title"] = bookmark.title
+                dict["url"] = bookmark.urlString
+                dict["description"] = bookmark.descriptionText
+            }
+
+        case .filePath:
+            if let filePath = block.filePathData {
+                dict["path"] = filePath.pathString
+                dict["displayName"] = filePath.displayName
+            }
+            
+        case .reminder:
+            if let reminder = block.reminderData {
+                dict["title"] = reminder.title
+                dict["dueDate"] = reminder.dueDate?.formatted()
+                dict["isCompleted"] = reminder.isCompleted
+            }
         }
-        dict["blocks"] = blocks
         
-        if let data = try? JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted),
-           let str = String(data: data, encoding: .utf8) {
-            return str
-        }
-        return "Error encoding JSON"
+        return dict
     }
     
     /// Returns the JSON wrapped in Markdown code fences
