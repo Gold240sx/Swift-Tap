@@ -57,7 +57,7 @@ struct BlockCopyHelper {
 
         case .accordion:
             if let sourceAccordion = source.accordion {
-                let newAccordion = AccordionData(heading: sourceAccordion.heading, level: sourceAccordion.level ?? .h1)
+                let newAccordion = AccordionData(heading: sourceAccordion.heading, level: sourceAccordion.level)
                 newAccordion.isExpanded = sourceAccordion.isExpanded ?? true
                 if newAccordion.contentBlocks == nil { newAccordion.contentBlocks = [] }
                 for nestedBlock in (sourceAccordion.contentBlocks ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) }) {

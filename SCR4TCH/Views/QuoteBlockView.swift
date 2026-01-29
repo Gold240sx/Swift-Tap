@@ -10,6 +10,7 @@ import SwiftUI
 struct QuoteBlockView: View {
     @Bindable var block: NoteBlock
     @Binding var selection: AttributedTextSelection
+    @Binding var selectedRange: NSRange
     var focusState: FocusState<UUID?>.Binding
     var onDelete: () -> Void = {}
     var onMerge: () -> Void = {}
@@ -33,18 +34,15 @@ struct QuoteBlockView: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                TextEditor(text: Binding(
-                    get: { block.text ?? "" },
-                    set: { newValue in
-                        // Normalize fonts - remove font family/styles but preserve bold/italic
-                        let normalized = FontNormalizer.normalizeFonts(newValue)
-                        block.text = normalized
-                    }
-                ), selection: $selection)
-                .font(.body)
-                .scrollDisabled(true)
-                .focused(focusState, equals: block.id)
-                .tint(Color(red: 0.0, green: 0.3, blue: 0.8))
+                MacEditorView(
+                    text: Binding(
+                        get: { block.text ?? "" },
+                        set: { block.text = $0 }
+                    ),
+                    selection: $selection,
+                    selectedRange: $selectedRange,
+                    font: .systemFont(ofSize: NSFont.systemFontSize)
+                )
             }
             .padding(.leading, 12)
         }

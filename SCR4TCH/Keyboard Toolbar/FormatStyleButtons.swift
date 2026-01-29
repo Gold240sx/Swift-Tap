@@ -1,93 +1,157 @@
-//
-//----------------------------------------------
-// Original project: RichNotes
-// by  Stewart Lynch on 2025-10-24
-//
-// Follow me on Mastodon: https://iosdev.space/@StewartLynch
-// Follow me on Threads: https://www.threads.net/@stewartlynch
-// Follow me on Bluesky: https://bsky.app/profile/stewartlynch.bsky.social
-// Follow me on X: https://x.com/StewartLynch
-// Follow me on LinkedIn: https://linkedin.com/in/StewartLynch
-// Email: slynch@createchsol.com
-// Subscribe on YouTube: https://youTube.com/@StewartLynch
-// Buy me a ko-fi:  https://ko-fi.com/StewartLynch
-//----------------------------------------------
-// Copyright © 2025 CreaTECH Solutions. All rights reserved.
-
-
 import SwiftUI
+import AppKit
 
 struct FormatStyleButtons: View {
-    @Environment(\.fontResolutionContext) var fontResolutionContext
     @Binding var text: AttributedString
-    @Binding var selection: AttributedTextSelection
+    @Binding var selectedRange: NSRange
+    @ObservedObject private var langManager = LanguageManager.shared
+
+    // MARK: - Computed States
+    
+    private var isBold: Bool {
+        hasTrait(.bold)
+    }
+    
+    private var isItalic: Bool {
+        hasTrait(.italic)
+    }
+    
+    private var isUnderline: Bool {
+        hasAttribute(.underlineStyle)
+    }
+    
+    private var isStrikethrough: Bool {
+        hasAttribute(.strikethroughStyle)
+    }
+
     var body: some View {
-        var selCopy = selection
-        let states = SelectionState.selectionStyleState(
-            text: text,
-            selection: &selCopy) { font in
-                let resolved = font.resolve(in: fontResolutionContext)
-                return (resolved.isBold, resolved.isItalic)
+        HStack(spacing: 0) {
+            Button {
+                toggleTrait(.boldFontMask)
+            } label: {
+                Image(systemName: "bold")
+                    .font(.system(size: langManager.scaledFontSize(16)))
             }
-        Button {
-            text.transformAttributes(in: &selection) { container in
-                let currentFont = container.font ?? .default
-                let resolved = currentFont.resolve(in: fontResolutionContext)
-                container.font = currentFont.bold(!resolved.isBold)
+            .frame(width: 40, height: 40)
+            .selectedBackground(state: isBold)
+            .help(langManager.translate("bold"))
+
+            Button {
+                toggleTrait(.italicFontMask)
+            } label: {
+                Image(systemName: "italic")
+                    .font(.system(size: langManager.scaledFontSize(16)))
             }
-        } label: {
-            Image(systemName: "bold")
+            .frame(width: 40, height: 40)
+            .selectedBackground(state: isItalic)
+            .help(langManager.translate("italic"))
+
+            Button {
+                toggleAttribute(.underlineStyle)
+            } label: {
+                Image(systemName: "underline")
+                    .font(.system(size: langManager.scaledFontSize(16)))
+            }
+            .frame(width: 40, height: 40)
+            .selectedBackground(state: isUnderline)
+            .help(langManager.translate("underline"))
+
+            Button {
+                toggleAttribute(.strikethroughStyle)
+            } label: {
+                Image(systemName: "strikethrough")
+                    .font(.system(size: langManager.scaledFontSize(16)))
+            }
+            .frame(width: 40, height: 40)
+            .selectedBackground(state: isStrikethrough)
+            .help(langManager.translate("strikethrough"))
         }
-        #if os(iOS)
-        .frame(width: 40, height: 40)
-        #endif
-        .selectedBackground(state: SelectionState.isSelected(for: states.bold))
-        Button {
-            text.transformAttributes(in: &selection) { container in
-                let currentFont = container.font ?? .default
-                let resolved = currentFont.resolve(in: fontResolutionContext)
-                container.font = currentFont.italic(!resolved.isItalic)
-            }
-        } label: {
-            Image(systemName: "italic")
+    }
+
+    // MARK: - State Helpers
+
+    private func hasTrait(_ trait: NSFontDescriptor.SymbolicTraits) -> Bool {
+        let nsAttr = NSAttributedString(text)
+        guard selectedRange.location < nsAttr.length else { return false }
+        
+        let attributes = nsAttr.attributes(at: selectedRange.location, effectiveRange: nil)
+        if let font = attributes[.font] as? NSFont {
+            return font.fontDescriptor.symbolicTraits.contains(trait)
         }
-        #if os(iOS)
-        .frame(width: 40, height: 40)
-        #endif
-        .selectedBackground(state: SelectionState.isSelected(for: states.italic))
-        Button {
-            text.transformAttributes(in: &selection) { container in
-                if container.underlineStyle == .single {
-                    container.underlineStyle = .none
+        return false
+    }
+    
+    private func hasAttribute(_ key: NSAttributedString.Key) -> Bool {
+        let nsAttr = NSAttributedString(text)
+        guard selectedRange.location < nsAttr.length else { return false }
+        
+        let attributes = nsAttr.attributes(at: selectedRange.location, effectiveRange: nil)
+        if let value = attributes[key] as? Int, value != 0 {
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Actions
+
+    private func toggleTrait(_ mask: NSFontTraitMask) {
+        var symbolicTrait: NSFontDescriptor.SymbolicTraits = []
+        if mask.contains(.boldFontMask) { symbolicTrait = .bold }
+        if mask.contains(.italicFontMask) { symbolicTrait = .italic }
+        
+        let shouldAdd = !hasTrait(symbolicTrait)
+        
+        let nsAttr = NSMutableAttributedString(text)
+        
+        guard selectedRange.location + selectedRange.length <= nsAttr.length else { return }
+        
+        // We must check if length is 0. If 0, we might want to apply to typing attributes?
+        // But for now, let's assume valid selection or word under cursor.
+        // If selection is length 0, macOS usually handles typing attributes in the TextView.
+        // However, here we are editing the STORAGE directly.
+        // Editing storage with 0 length selection doesn't do anything visible unless we insert.
+        // So this button primarily works on SELECTION.
+        
+        if selectedRange.length > 0 {
+            print("Applying trait: \(mask.contains(.boldFontMask) ? "Bold" : "Italic")")
+            print("Selected Range: \(selectedRange)")
+            let selectedText = nsAttr.attributedSubstring(from: selectedRange).string
+            print("Selected Content: \(selectedText)")
+
+            nsAttr.enumerateAttribute(.font, in: selectedRange, options: [.longestEffectiveRangeNotRequired]) { value, range, _ in
+                let currentFont = (value as? NSFont) ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                
+                let newFont: NSFont
+                if shouldAdd {
+                    newFont = NSFontManager.shared.convert(currentFont, toHaveTrait: mask)
                 } else {
-                    container.underlineStyle = .single
+                    newFont = NSFontManager.shared.convert(currentFont, toNotHaveTrait: mask)
                 }
+                nsAttr.addAttribute(.font, value: newFont, range: range)
             }
-        } label: {
-            Image(systemName: "underline")
+            text = AttributedString(nsAttr)
         }
-        #if os(iOS)
-        .frame(width: 40, height: 40)
-        #endif
-        .selectedBackground(state: SelectionState.isSelected(for: states.underline))
-        Button {
-            text.transformAttributes(in: &selection) { container in
-                if container.strikethroughStyle == .single {
-                    container.strikethroughStyle = .none
-                } else {
-                    container.strikethroughStyle = .single
-                }
+    }
+
+    private func toggleAttribute(_ key: NSAttributedString.Key) {
+        let shouldAdd = !hasAttribute(key)
+        let nsAttr = NSMutableAttributedString(text)
+        
+        guard selectedRange.location + selectedRange.length <= nsAttr.length else { return }
+        
+        if selectedRange.length > 0 {
+            print("Applying attribute: \(key.rawValue)")
+            print("Selected Range: \(selectedRange)")
+            let selectedText = nsAttr.attributedSubstring(from: selectedRange).string
+            print("Selected Content: \(selectedText)")
+
+            if shouldAdd {
+                nsAttr.addAttribute(key, value: NSUnderlineStyle.single.rawValue, range: selectedRange)
+            } else {
+                nsAttr.removeAttribute(key, range: selectedRange)
             }
-        } label: {
-            Image(systemName: "strikethrough")
+            text = AttributedString(nsAttr)
         }
-        #if os(iOS)
-        .frame(width: 40, height: 40)
-        #endif
-        .selectedBackground(state: SelectionState.isSelected(for: states.strikethrough))
     }
 }
 
-#Preview {
-    FormatStyleButtons(text: .constant(""), selection:  .constant(AttributedTextSelection()))
-}

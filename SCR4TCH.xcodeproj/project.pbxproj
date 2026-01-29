@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E684166E2F2A6FBA00B2D1C0 /* ColorSelector in Frameworks */ = {isa = PBXBuildFile; productRef = E684166D2F2A6FBA00B2D1C0 /* ColorSelector */; };
 		E6CC3A462F2183EA005A84EB /* SDWebImageSVGCoder in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A432F2183EA005A84EB /* SDWebImageSVGCoder */; };
 		E6CC3A472F2183EA005A84EB /* SDWebImageSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A442F2183EA005A84EB /* SDWebImageSwiftUI */; };
 		E6CC3A482F2183EA005A84EB /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = E6CC3A452F2183EA005A84EB /* Highlightr */; };
@@ -76,6 +77,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E6CC3A462F2183EA005A84EB /* SDWebImageSVGCoder in Frameworks */,
+				E684166E2F2A6FBA00B2D1C0 /* ColorSelector in Frameworks */,
 				E6CC3A472F2183EA005A84EB /* SDWebImageSwiftUI in Frameworks */,
 				E6CC3A482F2183EA005A84EB /* Highlightr in Frameworks */,
 			);
@@ -141,6 +143,7 @@
 				E6CC3A432F2183EA005A84EB /* SDWebImageSVGCoder */,
 				E6CC3A442F2183EA005A84EB /* SDWebImageSwiftUI */,
 				E6CC3A452F2183EA005A84EB /* Highlightr */,
+				E684166D2F2A6FBA00B2D1C0 /* ColorSelector */,
 			);
 			productName = SCR4TCH;
 			productReference = E6DE10FE2F291BCB00CEB8D5 /* SCR4TCH.app */;
@@ -228,6 +231,7 @@
 				E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */,
 				E6CC3A3E2F2183D2005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSwiftUI" */,
 				E6CC3A412F2183EA005A84EB /* XCRemoteSwiftPackageReference "Highlightr" */,
+				E684166C2F2A6FBA00B2D1C0 /* XCRemoteSwiftPackageReference "ColorSelector" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E6C8EB072F2034A600AA1B97 /* Products */;
@@ -655,6 +659,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		E684166C2F2A6FBA00B2D1C0 /* XCRemoteSwiftPackageReference "ColorSelector" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jaywcjlove/ColorSelector";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SDWebImage/SDWebImageSVGCoder.git";
@@ -682,6 +694,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		E684166D2F2A6FBA00B2D1C0 /* ColorSelector */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E684166C2F2A6FBA00B2D1C0 /* XCRemoteSwiftPackageReference "ColorSelector" */;
+			productName = ColorSelector;
+		};
 		E6CC3A432F2183EA005A84EB /* SDWebImageSVGCoder */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E6CC3A3B2F2183BC005A84EB /* XCRemoteSwiftPackageReference "SDWebImageSVGCoder" */;

@@ -71,7 +71,7 @@ struct URLValidator {
     /// Constructs a favicon URL for a given website URL
     /// - Parameter url: The website URL
     /// - Returns: A URL pointing to the site's favicon
-    static func faviconURL(for url: URL) -> URL? {
+    nonisolated static func faviconURL(for url: URL) -> URL? {
         guard let host = url.host else { return nil }
         // Use Google's favicon service as a reliable fallback
         return URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=32")

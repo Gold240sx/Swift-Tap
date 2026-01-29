@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct ColumnBlockView: View {
     @Bindable var columnData: ColumnData
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange] // Added
     var focusState: FocusState<UUID?>.Binding
     var note: RichTextNote?
     var onDelete: () -> Void = {}
@@ -78,6 +79,7 @@ struct ColumnBlockView: View {
                     availableWidth: availableWidth,
                     viewWidth: viewWidth,
                     selections: $selections,
+                    selectionsRanges: $selectionsRanges,
                     focusState: focusState,
                     onRemoveBlock: onRemoveBlock,
                     onMergeNestedBlock: onMergeNestedBlock,
@@ -181,6 +183,7 @@ struct ColumnContentView: View {
     let availableWidth: CGFloat
     let viewWidth: CGFloat
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange]
     var focusState: FocusState<UUID?>.Binding
     
     // Callbacks
@@ -233,6 +236,7 @@ struct ColumnContentView: View {
                     block: block,
                     column: column,
                     selections: $selections,
+                    selectionsRanges: $selectionsRanges,
                     focusState: focusState,
                     draggingBlock: $draggingBlock,
                     dropState: $dropState,
@@ -302,6 +306,7 @@ struct ColumnContentView: View {
                 draggingBlock: $draggingBlock,
                 copiedBlock: copiedBlock,
                 selections: $selections,
+                selectionsRanges: $selectionsRanges,
                 focusState: focusState,
                 note: note,
                 onInsertTextBlockAfter: onInsertTextBlockAfter,
@@ -345,6 +350,7 @@ struct ColumnNestedBlockControlsContent: View {
     @Binding var draggingBlock: NoteBlock?
     let copiedBlock: NoteBlock?
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange]
     var focusState: FocusState<UUID?>.Binding
     let note: RichTextNote?
     let onInsertTextBlockAfter: (NoteBlock, Column) -> Void
@@ -552,6 +558,10 @@ struct ColumnNestedBlockControlsContent: View {
                                 }
                             }
                         ),
+                        selectedRange: Binding(
+                            get: { (block.id.flatMap { selectionsRanges[$0] }) ?? NSRange(location: 0, length: 0) },
+                            set: { if let id = block.id { selectionsRanges[id] = $0 } }
+                        ),
                         focusState: focusState,
                         onDelete: { onRemoveBlock(block) },
                         onMerge: { onMergeNestedBlock(block, column) },
@@ -589,6 +599,7 @@ struct ColumnNestedBlockControlsContent: View {
                             }
                         ),
                         selections: $selections,
+                        selectionsRanges: $selectionsRanges,
                         headingFocusID: accordion.id ?? UUID(),
                         focusState: focusState,
                         note: note,
@@ -632,6 +643,7 @@ struct NestedBlockContainer<Content: View>: View {
     let block: NoteBlock
     let column: Column
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange]
     var focusState: FocusState<UUID?>.Binding
     @Binding var draggingBlock: NoteBlock?
     @Binding var dropState: DropState?

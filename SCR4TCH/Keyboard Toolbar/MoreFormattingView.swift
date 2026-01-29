@@ -1,179 +1,173 @@
-//
-//----------------------------------------------
-// Original project: RichNotes
-// by  Stewart Lynch on 2025-10-24
-//
-// Follow me on Mastodon: https://iosdev.space/@StewartLynch
-// Follow me on Threads: https://www.threads.net/@stewartlynch
-// Follow me on Bluesky: https://bsky.app/profile/stewartlynch.bsky.social
-// Follow me on X: https://x.com/StewartLynch
-// Follow me on LinkedIn: https://linkedin.com/in/StewartLynch
-// Email: slynch@createchsol.com
-// Subscribe on YouTube: https://youTube.com/@StewartLynch
-// Buy me a ko-fi:  https://ko-fi.com/StewartLynch
-//----------------------------------------------
-// Copyright © 2025 CreaTECH Solutions. All rights reserved.
-
-
 import SwiftUI
 import AppKit
 
 struct MoreFormattingView: View {
-    @Environment(\.fontResolutionContext) var fontResolutionContext
     @Binding var text: AttributedString
-    @Binding var selection: AttributedTextSelection
-    @State private var color = Color.primary
-    @State private var isInternalUpdate = false
+    @Binding var selectedRange: NSRange
+    @ObservedObject private var langManager = LanguageManager.shared
 
     var body: some View {
-        var selCopy = selection
-        let states = SelectionState.selectionStyleState(
-            text: text,
-            selection: &selCopy) { font in
-                let resolved = font.resolve(in: fontResolutionContext)
-                return (resolved.isBold, resolved.isItalic)
-            }
-        VStack(alignment: .leading) {
-            Text("Format").bold()
-            ScrollView(.horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Button("Extra Large") {
-                        text.transformAttributes(in: &selection) { container in
-                            container.font = .title
-                        }
-                    }.font(.title).padding(.horizontal, 5)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.extraLargeFont), isButton: false)
-                    Button("Large") {
-                        text.transformAttributes(in: &selection) { container in
-                            container.font = .title2
-                        }
-                    }.font(.title2).padding(.horizontal, 5)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.largeFont), isButton: false)
-                    Button("Medium") {
-                        text.transformAttributes(in: &selection) { container in
-                            container.font = .title3
-                        }
-                    }.font(.title3).padding(.horizontal, 5)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.mediumFont), isButton: false)
-                    Button("Body") {
-                        text.transformAttributes(in: &selection) { container in
-                            container.font = .body
-                        }
-                    }.font(.body).padding(.horizontal, 5)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.bodyFont), isButton: false)
-                    Button("Footnote") {
-                        text.transformAttributes(in: &selection) { container in
-                            container.font = .footnote
-                        }
-                    }.font(.footnote).padding(.horizontal, 5)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.footnoteFont), isButton: false)
-                }
-                ScrollView(.horizontal) {
-                    HStack {
-                        FormatStyleButtons(text: $text, selection: $selection)
-                        Button {
-                            text.transformAttributes(in: &selection) { container in
-                                container.alignment = .left
-                            }
-                        } label: {
-                            Image(systemName: "text.alignleft")
-                        }
-                        .frame(width: 40, height: 40)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.leftAlignment))
-                        Button {
-                            text.transformAttributes(in: &selection) { container in
-                                container.alignment = .center
-                            }
-                        } label: {
-                            Image(systemName: "text.aligncenter")
-                        }
-                        .frame(width: 40, height: 40)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.centerAlignment))
-                        Button {
-                            text.transformAttributes(in: &selection) { container in
-                                container.alignment = .right
-                            }
-                        } label: {
-                            Image(systemName: "text.alignright")
-                        }
-                        .frame(width: 40, height: 40)
-                        .selectedBackground(state: SelectionState.isSelected(for: states.rightAlignment))
-                        ColorPicker("Text Color", selection: $color)
-                            .labelsHidden()
-                            .frame(width: 40, height: 40)
-                            .onChange(of: color) {
-                                guard !isInternalUpdate else { return }
-                                text.transformAttributes(in: &selection) { container in
-                                    container.foregroundColor = color
-                                }
-                            }
+        VStack(alignment: .leading, spacing: 12) {
+            Text(langManager.translate("format")).bold()
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Font Sizes
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        fontSizeButton(label: "extra_large", size: 34, weight: .bold)
+                        fontSizeButton(label: "large", size: 28, weight: .semibold)
+                        fontSizeButton(label: "medium", size: 22, weight: .medium)
+                        fontSizeButton(label: "body_font", size: NSFont.systemFontSize, weight: .regular)
+                        fontSizeButton(label: "footnote_font", size: 13, weight: .regular)
                     }
-                    .font(.system(size: 22))
+                    
+                    HStack(spacing: 4) {
+                        FormatStyleButtons(text: $text, selectedRange: $selectedRange)
+                        
+                        Divider().frame(height: 20)
+                        
+                        // Alignment
+                        alignmentButton(icon: "text.alignleft", align: .left)
+                        alignmentButton(icon: "text.aligncenter", align: .center)
+                        alignmentButton(icon: "text.alignright", align: .right)
+                        
+                        Divider().frame(height: 20)
+                        
+                        TextColorPicker(text: $text, selectedRange: $selectedRange)
+                            .frame(width: 40, height: 40)
+                    }
                 }
             }
-            Button("Remove Formatting") {
-                text.transformAttributes(in: &selection) { container in
-                    container = AttributeContainer()
-                }
+            .padding(.bottom, 8)
+            
+            Button(langManager.translate("remove_formatting")) {
+                removeFormatting()
             }
             .buttonStyle(.bordered)
-
-            // URL Conversion Section
+            
+            // URL Conversion
             if let url = selectedTextAsURL() {
                 Divider()
-                    .padding(.vertical, 4)
-
-                Button("Convert to Link") {
+                Button(langManager.translate("convert_to_link")) {
                     convertToStandardURL(url)
                 }
                 .buttonStyle(.bordered)
             }
         }
-        .buttonStyle(.plain)
         .padding()
-        .onAppear {
-            syncColorFromSelection()
-        }
-        .onChange(of: selection) {
-            syncColorFromSelection()
-        }
+        .frame(minWidth: 400)
     }
-
-    private func syncColorFromSelection() {
-        var selectionCopy = selection
-        let containers = SelectionState.selectedAttributeContainers(text: text, selection: &selectionCopy)
-
-        guard let target = containers.first?.foregroundColor, !color.isSimilar(to: target) else { return }
-
-        isInternalUpdate = true
-        color = target
-        DispatchQueue.main.async { [self] in
-            isInternalUpdate = false
+    
+    // MARK: - Components
+    
+    private func fontSizeButton(label: String, size: CGFloat, weight: NSFont.Weight) -> some View {
+        Button(langManager.translate(label)) {
+            applyFontSize(size, weight: weight)
         }
+        .buttonStyle(.plain)
+        .font(.system(size: size > 20 ? 20 : size)) // Scale down for UI
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(isFontSize(size) ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isFontSize(size) ? Color.accentColor : Color.clear, lineWidth: 1)
+        )
     }
-
+    
+    private func alignmentButton(icon: String, align: NSTextAlignment) -> some View {
+        Button {
+            applyAlignment(align)
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: langManager.scaledFontSize(16)))
+        }
+        .frame(width: 40, height: 40)
+        .selectedBackground(state: isAlignment(align))
+        .help(langManager.translate(icon))
+    }
+    
+    // MARK: - Formatting Logic
+    
+    private func isFontSize(_ size: CGFloat) -> Bool {
+        // Simple check: check first char's font size
+        let nsAttr = NSAttributedString(text)
+        guard selectedRange.location < nsAttr.length else { return false }
+        if let font = nsAttr.attribute(.font, at: selectedRange.location, effectiveRange: nil) as? NSFont {
+            return abs(font.pointSize - size) < 0.5
+        }
+        return false
+    }
+    
+    private func applyFontSize(_ size: CGFloat, weight: NSFont.Weight) {
+        let nsAttr = NSMutableAttributedString(text)
+        guard selectedRange.location + selectedRange.length <= nsAttr.length, selectedRange.length > 0 else { return }
+        
+        let newFont = NSFont.systemFont(ofSize: size, weight: weight)
+        nsAttr.addAttribute(.font, value: newFont, range: selectedRange)
+        text = AttributedString(nsAttr)
+    }
+    
+    private func isAlignment(_ align: NSTextAlignment) -> Bool {
+        let nsAttr = NSAttributedString(text)
+        guard selectedRange.location < nsAttr.length else { return false }
+        if let para = nsAttr.attribute(.paragraphStyle, at: selectedRange.location, effectiveRange: nil) as? NSParagraphStyle {
+            return para.alignment == align
+        }
+        // Default might be left/natural
+        return align == .left // simplified
+    }
+    
+    private func applyAlignment(_ align: NSTextAlignment) {
+        let nsAttr = NSMutableAttributedString(text)
+        guard selectedRange.location + selectedRange.length <= nsAttr.length, selectedRange.length > 0 else { return }
+        
+        // We probably shouldn't replace the ENTIRE paragraph style, but copy and modify
+        nsAttr.enumerateAttribute(.paragraphStyle, in: selectedRange, options: [.longestEffectiveRangeNotRequired]) { value, range, _ in
+            let para = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+            para.alignment = align
+            nsAttr.addAttribute(.paragraphStyle, value: para, range: range)
+        }
+        text = AttributedString(nsAttr)
+    }
+    
+    private func removeFormatting() {
+        let nsAttr = NSMutableAttributedString(text)
+        guard selectedRange.location + selectedRange.length <= nsAttr.length, selectedRange.length > 0 else { return }
+        
+        // Keep purely content attributes? Or remove style attributes?
+        // Remove font, color, underline, strikethrough, paragraphStyle
+        let keysToRemove: [NSAttributedString.Key] = [.font, .foregroundColor, .underlineStyle, .strikethroughStyle, .paragraphStyle, .link, .backgroundColor, NSAttributedString.Key("intentColor")]
+        for key in keysToRemove {
+            nsAttr.removeAttribute(key, range: selectedRange)
+        }
+        // Restore default font?
+        nsAttr.addAttribute(.font, value: NSFont.systemFont(ofSize: NSFont.systemFontSize), range: selectedRange)
+        nsAttr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: selectedRange)
+        
+        text = AttributedString(nsAttr)
+    }
+    
     // MARK: - URL Conversion
-
-    /// Extracts a URL from the currently selected text
+    
     private func selectedTextAsURL() -> URL? {
-        guard case .ranges(let rangeSet) = selection.indices(in: text),
-              let range = rangeSet.ranges.first else { return nil }
-
-        let selectedText = String(text[range].characters).trimmingCharacters(in: .whitespaces)
-        return URLValidator.extractURL(from: selectedText)
+        let nsAttr = NSAttributedString(text)
+        guard selectedRange.length > 0, selectedRange.location + selectedRange.length <= nsAttr.length else { return nil }
+        
+        let selectedString = nsAttr.attributedSubstring(from: selectedRange).string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return URLValidator.extractURL(from: selectedString)
     }
-
-    /// Converts selected text to a standard URL link
+    
     private func convertToStandardURL(_ url: URL) {
-        text.transformAttributes(in: &selection) { container in
-            container.link = url
-            container.foregroundColor = .blue
-            container.underlineStyle = .single
-        }
+        let nsAttr = NSMutableAttributedString(text)
+        guard selectedRange.location + selectedRange.length <= nsAttr.length else { return }
+        
+        nsAttr.addAttribute(.link, value: url, range: selectedRange)
+        nsAttr.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: selectedRange)
+        nsAttr.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: selectedRange)
+        
+        text = AttributedString(nsAttr)
     }
 }
 
-#Preview {
-    MoreFormattingView(text: .constant(""), selection: .constant(AttributedTextSelection()))
-        .frame(height: 200)
-}

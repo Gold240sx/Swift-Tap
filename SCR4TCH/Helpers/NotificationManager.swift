@@ -26,10 +26,7 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     }
     
     func requestAuthorization() {
-        var options: UNAuthorizationOptions = [.alert, .sound, .badge]
-        if #available(macOS 12.0, *) {
-            options.insert(.timeSensitive)
-        }
+        let options: UNAuthorizationOptions = [.alert, .sound, .badge]
         
         UNUserNotificationCenter.current().requestAuthorization(options: options) { granted, error in
             if granted {

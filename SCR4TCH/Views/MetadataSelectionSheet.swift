@@ -5,14 +5,15 @@ struct MetadataSelectionSheet: View {
     @Bindable var note: RichTextNote
     @Environment(\.modelContext) var context
     @Environment(\.dismiss) var dismiss
+    @ObservedObject private var langManager = LanguageManager.shared
     
     @Query(sort: \Category.name) private var categories: [Category]
     @Query(sort: \Tag.name) private var allTags: [Tag]
     
     enum MetadataTab: String, CaseIterable {
-        case status = "Status"
-        case categories = "Categories"
-        case tags = "Tags"
+        case status = "status"
+        case categories = "categories"
+        case tags = "tags_tab"
         
         var icon: String {
             switch self {
@@ -67,7 +68,7 @@ struct MetadataSelectionSheet: View {
     
     private var header: some View {
         HStack {
-            Text("Note Properties")
+            Text(langManager.translate("note_properties"))
                 .font(.headline)
             Spacer()
             Button {
@@ -94,7 +95,7 @@ struct MetadataSelectionSheet: View {
                     VStack(spacing: 6) {
                         Image(systemName: tab.icon)
                             .font(.system(size: 14, weight: .medium))
-                        Text(tab.rawValue)
+                        Text(langManager.translate(tab.rawValue))
                             .font(.system(size: 10, weight: .bold))
                             .textCase(.uppercase)
                     }
@@ -119,7 +120,7 @@ struct MetadataSelectionSheet: View {
     
     private var categoryTabContent: some View {
         VStack(spacing: 0) {
-            searchBar(placeholder: "Search or Create Category...")
+            searchBar(placeholder: langManager.translate("search_create_category"))
             
             let filteredCategories = searchText.isEmpty ? categories : categories.filter { ($0.name ?? "").localizedCaseInsensitiveContains(searchText) }
             let exactMatch = categories.first(where: { ($0.name ?? "").localizedCaseInsensitiveCompare(searchText) == .orderedSame })
@@ -133,7 +134,7 @@ struct MetadataSelectionSheet: View {
                         HStack {
                             Image(systemName: "plus.circle.fill")
                                 .foregroundStyle(.blue)
-                            Text("Create \"\(searchText)\"")
+                            Text(langManager.translate("create_item").replacingOccurrences(of: "{name}", with: searchText))
                                 .fontWeight(.medium)
                             Spacer()
                         }
@@ -143,7 +144,7 @@ struct MetadataSelectionSheet: View {
                 
                 Section {
                     CategorySelectionItem(
-                        name: "Uncategorized",
+                        name: langManager.translate("uncategorized"),
                         color: .gray,
                         isSelected: note.category == nil,
                         action: {
@@ -168,7 +169,7 @@ struct MetadataSelectionSheet: View {
                         .listRowSeparator(.hidden)
                     }
                 } header: {
-                    Text("Existing Categories")
+                    Text(langManager.translate("existing_categories"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -180,7 +181,7 @@ struct MetadataSelectionSheet: View {
     
     private var tagsTabContent: some View {
         VStack(spacing: 0) {
-            searchBar(placeholder: "Search or Create Tag...")
+            searchBar(placeholder: langManager.translate("search_create_tag"))
             
             let filteredTags = searchText.isEmpty ? allTags : allTags.filter { ($0.name ?? "").localizedCaseInsensitiveContains(searchText) }
             let exactMatch = allTags.first(where: { ($0.name ?? "").localizedCaseInsensitiveCompare(searchText) == .orderedSame })
@@ -194,7 +195,7 @@ struct MetadataSelectionSheet: View {
                         HStack {
                             Image(systemName: "plus.circle.fill")
                                 .foregroundStyle(.blue)
-                            Text("Create \"\(searchText)\"")
+                            Text(langManager.translate("create_item").replacingOccurrences(of: "{name}", with: searchText))
                                 .fontWeight(.medium)
                             Spacer()
                         }
@@ -221,7 +222,7 @@ struct MetadataSelectionSheet: View {
                         .listRowSeparator(.hidden)
                     }
                 } header: {
-                    Text("Existing Tags")
+                    Text(langManager.translate("existing_tags"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -255,9 +256,9 @@ struct MetadataSelectionSheet: View {
     
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Current Status", icon: "flag.fill")
+            SectionHeader(title: langManager.translate("current_status"), icon: "flag.fill")
             
-            Text("Choose a status based on how long you intend to keep this note. This helps keep your notes organized and your workspace clean.")
+            Text(langManager.translate("status_description"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -313,7 +314,7 @@ struct MetadataSelectionSheet: View {
     
     private var pinSection: some View {
         Toggle(isOn: $note.isPinned) {
-            SectionHeader(title: "Pinned", icon: "pin.fill")
+            SectionHeader(title: langManager.translate("pinned"), icon: "pin.fill")
         }
         .toggleStyle(.switch)
         .onChange(of: note.isPinned) {
@@ -341,6 +342,7 @@ struct StatusButton: View {
     let status: RichTextNote.NoteStatus
     let isSelected: Bool
     let action: () -> Void
+    @ObservedObject private var langManager = LanguageManager.shared
     
     var body: some View {
         Button(action: action) {
@@ -373,12 +375,7 @@ struct StatusButton: View {
     }
     
     private var statusLabel: String {
-        switch status {
-        case .saved: return "Saved"
-        case .temp: return "Temp"
-        case .deletingSoon: return "Deleting Soon"
-        case .deleted: return "Deleted"
-        }
+        langManager.translate(status.rawValue)
     }
     
     private var color: Color {

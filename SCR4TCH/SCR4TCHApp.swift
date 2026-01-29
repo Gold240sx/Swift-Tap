@@ -44,5 +44,20 @@ struct SCR4TCHApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+        .commands {
+            MacSettingsCommands()
+            
+            // Remove Window Menu
+            CommandGroup(replacing: .windowList) {}
+            
+            // Remove View Menu items (Sidebar and Toolbar commands)
+            CommandGroup(replacing: .sidebar) {}
+            CommandGroup(replacing: .toolbar) {}
+            // Remove "New Window" (File > New)
+            CommandGroup(replacing: .newItem) {}
+
+            // Remove Window Sizing (Minimize/Zoom/Tabs controls often grouped here or windowList)
+            CommandGroup(replacing: .windowSize) {}
+        }
     }
 }

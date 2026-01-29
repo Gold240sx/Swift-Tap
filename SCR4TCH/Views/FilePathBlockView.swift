@@ -124,8 +124,8 @@ struct FilePathBlockView: View {
 
     @ViewBuilder
     private var extensionBadge: some View {
-        if !(filePathData.fileExtension ?? "").isEmpty && !(filePathData.isDirectory ?? false) {
-            Text((filePathData.fileExtension ?? "").uppercased())
+        if !filePathData.fileExtension.isEmpty && !(filePathData.isDirectory ?? false) {
+            Text(filePathData.fileExtension.uppercased())
                 .font(.caption2)
                 .fontWeight(.medium)
                 .padding(.horizontal, 8)

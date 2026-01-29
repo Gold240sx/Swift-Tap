@@ -130,9 +130,18 @@ struct NoteRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             // Title/Preview
-            Text(noteTitle)
-                .font(.headline)
-                .lineLimit(1)
+            HStack(alignment: .top) {
+                Text(noteTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                
+                if note.hasUnviewedReminders {
+                    Spacer(minLength: 8)
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.red)
+                }
+            }
 
             // Preview text
             if !previewBody.isEmpty {

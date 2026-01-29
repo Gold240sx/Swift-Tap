@@ -146,7 +146,7 @@ struct JsonOutputView: View {
         case .accordion:
             if let accordion = block.accordion {
                 var md = ""
-                let level = accordion.level ?? .h1
+                let level = accordion.level
                 let headingLevel = level == .h1 ? "#" : (level == .h2 ? "##" : "###")
                 md += "\(headingLevel) \(String(accordion.heading.characters))\n\n"
                 
@@ -160,7 +160,7 @@ struct JsonOutputView: View {
             
         case .code:
             if let codeBlock = block.codeBlock {
-                let lang = codeBlock.language == .plainText ? "" : codeBlock.languageString
+                let lang = codeBlock.language == .plainText ? "" : (codeBlock.languageString ?? "")
                 return "```\(lang)\n\(codeBlock.code)\n```"
             }
             return ""

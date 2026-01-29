@@ -14,6 +14,7 @@ struct AccordionBlockView: View {
     @Bindable var accordion: AccordionData
     @Binding var headingSelection: AttributedTextSelection
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange]
     var headingFocusID: UUID
     var focusState: FocusState<UUID?>.Binding
     var note: RichTextNote?
@@ -182,6 +183,7 @@ struct AccordionBlockView: View {
                 dropState: $dropState,
                 blockHeights: blockHeights,
                 selections: $selections,
+                selectionsRanges: $selectionsRanges,
                 focusState: focusState,
                 note: note,
                 copiedBlock: copiedBlock,
@@ -242,6 +244,7 @@ struct NestedBlockControlsContent: View {
     @Binding var dropState: DropState?
     let blockHeights: [UUID: CGFloat]
     @Binding var selections: [UUID: AttributedTextSelection]
+    @Binding var selectionsRanges: [UUID: NSRange]
     var focusState: FocusState<UUID?>.Binding
     let note: RichTextNote?
     let copiedBlock: NoteBlock?
@@ -427,6 +430,10 @@ struct NestedBlockControlsContent: View {
                                 }
                             }
                         ),
+                        selectedRange: Binding(
+                            get: { (block.id.flatMap { selectionsRanges[$0] }) ?? NSRange(location: 0, length: 0) },
+                            set: { if let id = block.id { selectionsRanges[id] = $0 } }
+                        ),
                         focusState: focusState,
                         onDelete: {
                             onRemoveBlock(block)
@@ -471,6 +478,7 @@ struct NestedBlockControlsContent: View {
                             }
                         ),
                         selections: $selections,
+                        selectionsRanges: $selectionsRanges,
                         headingFocusID: nestedAccordion.id ?? UUID(),
                         focusState: focusState,
                         note: note,

@@ -21,7 +21,7 @@ import Combine
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let noteBlock = UTType(exportedAs: "com.stewartlynch.noteblock")
+    static let noteBlock = UTType(exportedAs: "com.michaelMartell.SCR4TCH")
 }
 
 struct ScrollTopPreferenceKey: PreferenceKey {
@@ -54,9 +54,11 @@ struct NotesEditorView: View {
     @FocusState private var focusedBlockID: UUID?
     @FocusState private var isTitleFocused: Bool
     @State private var selections: [UUID: AttributedTextSelection] = [:]
+    @State private var selectionsRanges: [UUID: NSRange] = [:]
     @State private var activeBlockID: UUID?
     @State private var showMetadataSheet = false
     @Environment(\.undoManager) var undoManager
+    @State private var showEmojiPicker = false
     @State private var showJson = false
     @State private var dropState: DropState?
     @State private var blockHeights: [UUID: CGFloat] = [:]
@@ -68,6 +70,7 @@ struct NotesEditorView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @State private var scrollDirection: ScrollDirection?
     @State private var titleEventMonitor: Any?
+    @ObservedObject private var langManager = LanguageManager.shared
     private let saveTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     // MARK: - Main Editor Content
@@ -81,7 +84,7 @@ struct NotesEditorView: View {
                         if note.status == .deletingSoon {
                             HStack {
                                 Image(systemName: "clock.badge.exclamationmark.fill")
-                                Text("Deleting soon")
+                                Text(langManager.translate("deleting_soon"))
                                     .fontWeight(.medium)
                                 Spacer()
                             }
@@ -93,12 +96,28 @@ struct NotesEditorView: View {
                         }
                         
                     // Document Title
-                    TextField("Page Title", text: $note.title, axis: .vertical)
-                        .font(.system(size: 34, weight: .bold))
-                        .textFieldStyle(.plain)
-                        .padding(.top, 16)
-                        .padding(.bottom, 8)
-                        .id("scroll-top")
+                    HStack(alignment: .center) {
+                        Button {
+                            showEmojiPicker.toggle()
+                        } label: {
+                            Text((note.emoji?.isEmpty ?? true) ? "📄" : note.emoji!)
+                                .font(.system(size: langManager.scaledFontSize(34)))
+                                .opacity((note.emoji?.isEmpty ?? true) ? 0.3 : 1.0)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 50)
+                        .popover(isPresented: $showEmojiPicker) {
+                            EmojiPickerView(emoji: $note.emoji)
+                        }
+                        .padding(.leading, 8)
+                        
+                        TextField(langManager.translate("page_title"), text: $note.title, axis: .vertical)
+                            .font(.system(size: langManager.scaledFontSize(34), weight: .bold))
+                            .textFieldStyle(.plain)
+                            .id("scroll-top")
+                    }
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
                         .focused($isTitleFocused)
                         .onChange(of: note.title) {
                             note.updatedOn = Date.now
@@ -301,6 +320,23 @@ struct NotesEditorView: View {
             }
         )
     }
+
+    var currentSelectedRange: Binding<NSRange> {
+        Binding(
+            get: {
+                if let id = activeBlockID {
+                    return selectionsRanges[id] ?? NSRange(location: 0, length: 0)
+                }
+                return NSRange(location: 0, length: 0)
+            },
+            set: { newValue in
+                if let id = activeBlockID {
+                    // print("DEBUG: set currentSelectedRange for \(id): \(newValue)")
+                    selectionsRanges[id] = newValue
+                }
+            }
+        )
+    }
     
     /// Recursively faults in all attributes of a block and its nested blocks
     private func faultInBlockAttributes(_ block: NoteBlock) {
@@ -378,7 +414,12 @@ struct NotesEditorView: View {
             Button {
                 showMetadataSheet.toggle()
             } label: {
-                Label("Note Metadata", systemImage: "tag")
+                Label {
+                    Text(langManager.translate("note_metadata"))
+                } icon: {
+                    Image(systemName: "tag")
+                        .font(.system(size: langManager.scaledFontSize(16)))
+                }
             }
             .popover(isPresented: $showMetadataSheet) {
                 MetadataSelectionSheet(note: note)
@@ -387,7 +428,12 @@ struct NotesEditorView: View {
             Button {
                 showJson.toggle()
             } label: {
-                Label("JSON Output", systemImage: "curlybraces")
+                Label {
+                    Text(langManager.translate("json_output"))
+                } icon: {
+                    Image(systemName: "curlybraces")
+                        .font(.system(size: langManager.scaledFontSize(16)))
+                }
             }
             .popover(isPresented: $showJson) {
                 JsonOutputView(note: note)
@@ -410,7 +456,7 @@ struct NotesEditorView: View {
     @ViewBuilder
     private var keyboardToolbarContent: some View {
         HStack {
-            FormatStyleButtons(text: currentText, selection: currentSelection)
+            FormatStyleButtons(text: currentText, selectedRange: currentSelectedRange)
             
             Button {
                 moreEditing.toggle()
@@ -418,7 +464,7 @@ struct NotesEditorView: View {
                 Image(systemName: "textformat")
             }
             .sheet(isPresented: $moreEditing) {
-                MoreFormattingView(text: currentText, selection: currentSelection)
+                MoreFormattingView(text: currentText, selectedRange: currentSelectedRange)
                     .presentationDetents([.height(200)])
             }
             
@@ -435,16 +481,18 @@ struct NotesEditorView: View {
 
     @ViewBuilder
     private var macToolbarContent: some View {
-        FormatStyleButtons(text: currentText, selection: currentSelection)
+        FormatStyleButtons(text: currentText, selectedRange: currentSelectedRange)
+        
+        TextColorPicker(text: currentText, selectedRange: currentSelectedRange)
         
         Button {
             moreEditing.toggle()
         } label: {
-            Label("Format", systemImage: "textformat")
+            Label(langManager.translate("format"), systemImage: "textformat")
         }
-        .help("Text Formatting (Aa)")
+        .help(langManager.translate("text_formatting_tooltip"))
         .popover(isPresented: $moreEditing) {
-            MoreFormattingView(text: currentText, selection: currentSelection)
+            MoreFormattingView(text: currentText, selectedRange: currentSelectedRange)
                 .frame(width: 400, height: 250)
         }
     }
@@ -452,7 +500,7 @@ struct NotesEditorView: View {
     var body: some View {
         mainEditorContent
             .padding([.horizontal, .bottom])
-            .navigationTitle((note.title ?? "").isEmpty ? "Untitled Note" : (note.title ?? ""))
+            .navigationTitle(note.title.isEmpty ? langManager.translate("untitled_note") : note.title)
             #if os(iOS)
             .toolbarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()
@@ -528,7 +576,7 @@ struct NotesEditorView: View {
         
         for provider in providers {
             if provider.canLoadObject(ofClass: String.self) {
-                provider.loadObject(ofClass: String.self) { string, _ in
+                _ = provider.loadObject(ofClass: String.self) { string, _ in
                     if let text = string {
                         DispatchQueue.main.async {
                             let sorted = (note.blocks ?? []).sorted(by: { ($0.orderIndex ?? 0) < ($1.orderIndex ?? 0) })
@@ -592,6 +640,10 @@ struct NotesEditorView: View {
                             get: { (block.id.flatMap { selections[$0] }) ?? AttributedTextSelection() },
                             set: { if let id = block.id { selections[id] = $0 } }
                         ),
+                        selectedRange: Binding(
+                            get: { (block.id.flatMap { selectionsRanges[$0] }) ?? NSRange(location: 0, length: 0) },
+                            set: { if let id = block.id { selectionsRanges[id] = $0 } }
+                        ),
                         focusState: $focusedBlockID,
                         onDelete: {
                             removeBlock(block)
@@ -623,7 +675,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Table", systemImage: "trash")
+                            Label(langManager.translate("delete_table"), systemImage: "trash")
                         }
                     }
                     .onTapGesture {
@@ -647,7 +699,9 @@ struct NotesEditorView: View {
                                 }
                             }
                         ),
+
                         selections: $selections,
+                        selectionsRanges: $selectionsRanges,
                         headingFocusID: accordion.id ?? UUID(),
                         focusState: $focusedBlockID,
                         note: note,
@@ -706,7 +760,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Accordion", systemImage: "trash")
+                            Label(langManager.translate("delete_accordion"), systemImage: "trash")
                         }
                     }
                 } else if let codeBlock = block.codeBlock {
@@ -721,7 +775,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Code Block", systemImage: "trash")
+                            Label(langManager.translate("delete_code_block"), systemImage: "trash")
                         }
                     }
                 } else if block.type == .quote {
@@ -730,6 +784,10 @@ struct NotesEditorView: View {
                         selection: Binding(
                             get: { (block.id.flatMap { selections[$0] }) ?? AttributedTextSelection() },
                             set: { if let id = block.id { selections[id] = $0 } }
+                        ),
+                        selectedRange: Binding(
+                            get: { (block.id.flatMap { selectionsRanges[$0] }) ?? NSRange(location: 0, length: 0) },
+                            set: { if let id = block.id { selectionsRanges[id] = $0 } }
                         ),
                         focusState: $focusedBlockID,
                         onDelete: {
@@ -743,7 +801,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Quote", systemImage: "trash")
+                            Label(langManager.translate("delete_quote"), systemImage: "trash")
                         }
                     }
                 } else if let imageData = block.imageData {
@@ -764,7 +822,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Bookmark", systemImage: "trash")
+                            Label(langManager.translate("delete_bookmark"), systemImage: "trash")
                         }
                     }
                 } else if let filePathData = block.filePathData {
@@ -778,7 +836,7 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete File Link", systemImage: "trash")
+                            Label(langManager.translate("delete_file_link"), systemImage: "trash")
                         }
                     }
                 } else if let reminderData = block.reminderData {
@@ -793,13 +851,14 @@ struct NotesEditorView: View {
                         Button(role: .destructive) {
                             removeBlock(block)
                         } label: {
-                            Label("Delete Reminder", systemImage: "trash")
+                            Label(langManager.translate("delete_reminder"), systemImage: "trash")
                         }
                     }
                 } else if let columnData = block.columnData {
                     ColumnBlockView(
                         columnData: columnData,
                         selections: $selections,
+                        selectionsRanges: $selectionsRanges,
                         focusState: $focusedBlockID,
                         note: note,
                         onDelete: {
@@ -1006,7 +1065,7 @@ struct NotesEditorView: View {
         }
 
         // Root insertion logic
-        let language = Language(rawValue: note.lastUsedCodeLanguage ?? "swift") ?? .swift
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
 
@@ -1387,7 +1446,7 @@ struct NotesEditorView: View {
 
     /// Insert a code block inside an accordion
     private func insertCodeBlockInAccordion(_ accordion: AccordionData) {
-        let language = Language(rawValue: note.lastUsedCodeLanguage ?? "swift") ?? .swift
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
 
@@ -2093,7 +2152,7 @@ struct NotesEditorView: View {
             b.orderIndex = (b.orderIndex ?? 0) + 1
         }
 
-        let language = Language(rawValue: note.lastUsedCodeLanguage ?? "swift") ?? .swift
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
 
@@ -2348,7 +2407,7 @@ struct NotesEditorView: View {
             b.orderIndex = (b.orderIndex ?? 0) + 1
         }
 
-        let language = Language(rawValue: note.lastUsedCodeLanguage ?? "swift") ?? .swift
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
 
@@ -2511,7 +2570,7 @@ struct NotesEditorView: View {
             b.orderIndex = (b.orderIndex ?? 0) + 1
         }
 
-        let language = Language(rawValue: note.lastUsedCodeLanguage ?? "swift") ?? .swift
+        let language = Language(rawValue: note.lastUsedCodeLanguage) ?? .swift
         let newCodeBlock = CodeBlockData(language: language)
         context.insert(newCodeBlock)
 

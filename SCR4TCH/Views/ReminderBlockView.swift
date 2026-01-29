@@ -119,6 +119,9 @@ struct ReminderBlockView: View {
                 isHovering = hovering
             }
         }
+        .onChange(of: reminder.title) {
+            updateNotification()
+        }
     }
     
     var isOverdue: Bool {
@@ -162,8 +165,8 @@ struct ReminderBlockView: View {
              
              NotificationManager.shared.scheduleNotification(
                 id: newID,
-                title: "Reminder: \(reminder.title ?? "Reminder")",
-                body: "Due now",
+                title: reminder.title ?? "Reminder",
+                body: note?.title.isEmpty == false ? "From Note: \(note!.title)" : "Reminder due now",
                 date: reminder.dueDate ?? Date(),
                 userInfo: noteInfo
              )

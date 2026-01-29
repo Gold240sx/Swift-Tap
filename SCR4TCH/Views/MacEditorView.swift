@@ -11,6 +11,7 @@ import AppKit
 struct MacEditorView: NSViewRepresentable {
     @Binding var text: AttributedString
     @Binding var selection: AttributedTextSelection
+    @Binding var selectedRange: NSRange // Add binding for NSRange
     var font: NSFont = .systemFont(ofSize: 13)
 
     /// Callback for URL paste detection. Returns true to allow the paste, false to cancel it.
@@ -43,6 +44,7 @@ struct MacEditorView: NSViewRepresentable {
 
         // Initial text set
         textView.textStorage?.setAttributedString(NSAttributedString(text))
+        context.coordinator.lastAppliedText = text
 
         return textView
     }
@@ -53,20 +55,37 @@ struct MacEditorView: NSViewRepresentable {
         nsView.backgroundColor = .clear
         nsView.focusRingType = .none
         
-        // Compare contents to avoid loop
-        let current = nsView.textStorage?.string ?? ""
-        let newPlain = String(text.characters)
+        // Check if update is needed using Coordinator's lastAppliedText
+        // This avoids attribute conversion issues and loops
+        if context.coordinator.lastAppliedText == text {
+            return
+        }
 
-        // Only update if the content has changed externally
-        if current != newPlain {
-            let selectedRange = nsView.selectedRange()
-            nsView.textStorage?.setAttributedString(NSAttributedString(text))
-            
-            // Restore selection safely
-            let newLength = nsView.textStorage?.length ?? 0
-            if selectedRange.location + selectedRange.length <= newLength {
-                nsView.setSelectedRange(selectedRange)
-            }
+        print("MacEditorView Update: receiving new text length \(text.characters.count)")
+        
+        // Debug attributes at current selection
+        let nsAttrDebug = NSAttributedString(text)
+        if selectedRange.location < nsAttrDebug.length {
+             let attrs = nsAttrDebug.attributes(at: selectedRange.location, effectiveRange: nil)
+             print("MacEditorView Update: attributes at \(selectedRange.location): \(attrs)")
+        }
+
+        // Apply new text
+        // Use binding selectedRange for restoration to prevent loss of focus or sync issues
+        var targetRange = selectedRange
+        // If binding is invalid (e.g. 0,0 at start but we are typing?), fallback to view.
+        // But usually binding is source of truth from parent. 
+        // Note: selectedRange might be updated by other views. 
+        // We trust the binding.
+        
+        let newAttr = NSAttributedString(text)
+        nsView.textStorage?.setAttributedString(newAttr)
+        context.coordinator.lastAppliedText = text
+        
+        // Restore selection safely
+        let newLength = nsView.textStorage?.length ?? 0
+        if targetRange.location != NSNotFound && targetRange.location + targetRange.length <= newLength {
+            nsView.setSelectedRange(targetRange)
         }
     }
 
@@ -76,6 +95,7 @@ struct MacEditorView: NSViewRepresentable {
 
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MacEditorView
+        var lastAppliedText: AttributedString?
 
         init(_ parent: MacEditorView) {
             self.parent = parent
@@ -88,19 +108,26 @@ struct MacEditorView: NSViewRepresentable {
                 // Save selection
                 let selectedRange = textView.selectedRange()
                 
-                // Normalize fonts to remove font family/styles while preserving bold/italic
-                let normalized = FontNormalizer.normalizeFonts(storage)
+                // Do NOT normalize here. Normalization should happen on paste only.
+                // let normalized = FontNormalizer.normalizeFonts(storage)
                 
-                // Update the text view with normalized text first
-                textView.textStorage?.setAttributedString(normalized)
+                // Convert to AttributedString directly from storage
+                // We must use a copy or ensure we are tolerant of attributes
+                let newAttributed = AttributedString(storage)
                 
-                // Restore selection
-                textView.setSelectedRange(selectedRange)
+                // Update local tracking FIRST to prevent loop when binding updates
+                self.lastAppliedText = newAttributed
                 
-                // Then update the parent binding (which will also normalize, but that's idempotent)
-                parent.text = AttributedString(normalized)
+                // Then update the parent binding
+                parent.text = newAttributed
+                parent.selectedRange = selectedRange
             }
             textView.invalidateIntrinsicContentSize() // Force layout update
+        }
+        
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.selectedRange = textView.selectedRange()
         }
 
         func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
@@ -108,7 +135,7 @@ struct MacEditorView: NSViewRepresentable {
 
             // Check if pasted text is a URL
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if URLValidator.extractURL(from: trimmed) != nil {
+            if let url = URLValidator.extractURL(from: trimmed) {
                 // Call parent callback for URL paste
                 if let onURLPaste = parent.onURLPaste {
                     return onURLPaste(trimmed, affectedCharRange)

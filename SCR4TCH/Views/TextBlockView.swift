@@ -11,6 +11,7 @@ import AppKit
 struct TextBlockView: View {
     @Bindable var block: NoteBlock
     @Binding var selection: AttributedTextSelection
+    @Binding var selectedRange: NSRange // Add binding
     var focusState: FocusState<UUID?>.Binding
     var onDelete: () -> Void = {}
     var onMerge: () -> Void = {}
@@ -24,6 +25,7 @@ struct TextBlockView: View {
     @State private var eventMonitor: Any?
     @State private var showURLPastePopover = false
     @State private var pendingURLPaste: (url: URL, range: NSRange)?
+    @ObservedObject private var langManager = LanguageManager.shared
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -33,14 +35,15 @@ struct TextBlockView: View {
                     set: { block.text = $0 }
                 ),
                 selection: $selection,
-                font: isNested ? .systemFont(ofSize: 13) : .systemFont(ofSize: NSFont.systemFontSize),
+                selectedRange: $selectedRange, // Pass binding
+                font: isNested ? .systemFont(ofSize: langManager.scaledFontSize(13)) : .systemFont(ofSize: langManager.scaledFontSize(NSFont.systemFontSize)),
                 onURLPaste: handleURLPaste
             )
             
             // Placeholder text
             if (block.text?.characters.isEmpty ?? true) && focusState.wrappedValue != block.id {
-                Text("Type Content here")
-                    .font(isNested ? .system(size: 13) : .system(size: NSFont.systemFontSize))
+                Text(langManager.translate("type_content_here"))
+                    .font(isNested ? .system(size: langManager.scaledFontSize(13)) : .system(size: langManager.scaledFontSize(NSFont.systemFontSize)))
                     .foregroundColor(.secondary.opacity(0.6))
                     .padding(.horizontal, 4)
                     .padding(.vertical, 8)

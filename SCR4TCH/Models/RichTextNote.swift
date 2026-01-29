@@ -51,6 +51,7 @@ class RichTextNote {
     
     var movedToDeletedOn: Date?
     var isPinned: Bool = false
+    var emoji: String? = nil
     
     var text: AttributedString {
         get {
@@ -231,6 +232,93 @@ class RichTextNote {
         }
         
         return textParts.joined(separator: " ")
+    }
+    
+    /// Returns true if the note has any reminders that have triggered (past due date) but have not been viewed.
+    var hasUnviewedReminders: Bool {
+        for block in blocks ?? [] {
+            if checkBlockForUnviewedReminders(block) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    private func checkBlockForUnviewedReminders(_ block: NoteBlock) -> Bool {
+        // Check if this block is a reminder
+        if let reminder = block.reminderData {
+            let isTriggered = (reminder.dueDate ?? .distantFuture) <= Date.now
+            let isCompleted = reminder.isCompleted ?? false
+            let hasBeenViewed = reminder.hasBeenViewed ?? false
+            
+            if isTriggered && !isCompleted && !hasBeenViewed {
+                return true
+            }
+        }
+        
+        // Recursively check nested content (even if the current block isn't a reminder)
+        if let accordion = block.accordion {
+            for nestedBlock in accordion.contentBlocks ?? [] {
+                if checkBlockForUnviewedReminders(nestedBlock) {
+                    return true
+                }
+            }
+        } else if let columnData = block.columnData {
+            for column in columnData.columns ?? [] {
+                for nestedBlock in column.blocks ?? [] {
+                    if checkBlockForUnviewedReminders(nestedBlock) {
+                        return true
+                    }
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    /// Marks all triggered reminders in the note as viewed.
+    func markRemindersAsViewed() {
+        var modified = false
+        for block in blocks ?? [] {
+            if markBlockRemindersAsViewed(block) {
+                modified = true
+            }
+        }
+        if modified {
+            try? modelContext?.save()
+        }
+    }
+    
+    private func markBlockRemindersAsViewed(_ block: NoteBlock) -> Bool {
+        var modified = false
+        
+        // Mark this block if it's a reminder
+        if let reminder = block.reminderData {
+            let isTriggered = (reminder.dueDate ?? .distantFuture) <= Date.now
+            if isTriggered && reminder.hasBeenViewed != true {
+                reminder.hasBeenViewed = true
+                modified = true
+            }
+        }
+        
+        // Recurse into nested content
+        if let accordion = block.accordion {
+            for nestedBlock in accordion.contentBlocks ?? [] {
+                if markBlockRemindersAsViewed(nestedBlock) {
+                    modified = true
+                }
+            }
+        } else if let columnData = block.columnData {
+            for column in columnData.columns ?? [] {
+                for nestedBlock in column.blocks ?? [] {
+                    if markBlockRemindersAsViewed(nestedBlock) {
+                        modified = true
+                    }
+                }
+            }
+        }
+        
+        return modified
     }
     
     var id: UUID?

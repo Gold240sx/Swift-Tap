@@ -3,73 +3,83 @@ import SwiftData
 
 struct SettingsView: View {
     @Environment(\.modelContext) var context
+    @Environment(\.dismiss) var dismiss
     @Query private var allSettings: [AppSettings]
-    @Query(sort: \Category.name) private var categories: [Category]
-    @Query(sort: \Tag.name) private var tags: [Tag]
+    @ObservedObject private var langManager = LanguageManager.shared
     
     private var settings: AppSettings {
         allSettings.first ?? AppSettings.default
     }
     
     var body: some View {
-        TabView {
-            generalSettings
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-            
-            CategoryManagementView()
-                .tabItem {
-                    Label("Categories", systemImage: "folder")
-                }
-            
-            TagManagementView()
-                .tabItem {
-                    Label("Tags", systemImage: "tag")
-                }
-        }
-        .frame(width: 500, height: 400)
-        .navigationTitle("Settings")
-    }
-    
-    private var generalSettings: some View {
-        Form {
-            Section("Notes Configuration") {
-                Picker("Default Save Location", selection: Binding(
-                    get: { settings.defaultStatus ?? .saved },
-                    set: {
-                        settings.defaultStatus = $0
-                        try? context.save()
+        NavigationStack {
+            Form {
+                Section(langManager.translate("appearance_language")) {
+                    Picker(langManager.translate("language"), selection: Binding(
+                        get: { langManager.currentLanguage },
+                        set: { langManager.setLanguage($0) }
+                    )) {
+                        ForEach(SupportedLanguage.allCases, id: \.self) { language in
+                            Text("\(language.flag) \(language.name)").tag(language)
+                        }
                     }
-                )) {
-                    Text("Saved Notes").tag(RichTextNote.NoteStatus.saved)
-                    Text("Temp Notes").tag(RichTextNote.NoteStatus.temp)
-                }
-                .help("Select where new notes are saved by default.")
-            }
-            
-            Section("Cleanup Rules") {
-                Picker("Temp Note Duration", selection: Binding(
-                    get: { settings.tempDurationHours ?? 24 },
-                    set: {
-                        settings.tempDurationHours = $0
-                        try? context.save()
+                    
+                    Picker(langManager.translate("font_size"), selection: Binding(
+                        get: { langManager.currentFontSize },
+                        set: { langManager.setFontSize($0) }
+                    )) {
+                        ForEach(FontSizePreference.allCases, id: \.self) { preference in
+                            Label(preference.name, systemImage: preference.icon)
+                                .tag(preference)
+                        }
                     }
-                )) {
-                    Text("1 hour").tag(1)
-                    Text("12 hours").tag(12)
-                    Text("24 hours").tag(24)
-                    Text("48 hours").tag(48)
-                    Text("7 days").tag(168)
+                    
                 }
-                .help("How long a note stays in 'Temp' before being moved to 'Deleted'.")
                 
-                Text("Deleted notes are permanently removed after 30 days.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Section(langManager.translate("notes_configuration")) {
+                    Picker(langManager.translate("default_save_location"), selection: Binding(
+                        get: { settings.defaultStatus ?? .saved },
+                        set: {
+                            settings.defaultStatus = $0
+                            try? context.save()
+                        }
+                    )) {
+                        Text(langManager.translate("saved")).tag(RichTextNote.NoteStatus.saved)
+                        Text(langManager.translate("temp")).tag(RichTextNote.NoteStatus.temp)
+                    }
+                }
+                
+                Section(langManager.translate("cleanup_rules")) {
+                    Picker(langManager.translate("temp_note_duration"), selection: Binding(
+                        get: { settings.tempDurationHours ?? 24 },
+                        set: {
+                            settings.tempDurationHours = $0
+                            try? context.save()
+                        }
+                    )) {
+                        Text("1 \(langManager.translate("hour"))").tag(1)
+                        Text("12 \(langManager.translate("hours"))").tag(12)
+                        Text("24 \(langManager.translate("hours"))").tag(24)
+                        Text("48 \(langManager.translate("hours"))").tag(48)
+                        Text("7 \(langManager.translate("days"))").tag(168)
+                    }
+                    
+                    Text(langManager.translate("deleted_notes_info"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .formStyle(.grouped)
+            .navigationTitle(langManager.translate("settings"))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(langManager.translate("done")) {
+                        dismiss()
+                    }
+                }
+            }
+            .frame(width: 500, height: 450)
         }
-        .formStyle(.grouped)
     }
 }
 

@@ -16,26 +16,32 @@
 
 
 import SwiftUI
+import AppKit
 
 struct RichTextEditorView: View {
     @State private var text: AttributedString = ""
     @State private var selection = AttributedTextSelection()
+    @State private var selectedRange = NSRange(location: 0, length: 0)
     @State private var moreEditing = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
         NavigationStack {
-            TextEditor(text: $text, selection: $selection)
+            MacEditorView(
+                text: $text,
+                selection: $selection,
+                selectedRange: $selectedRange,
+                font: .systemFont(ofSize: NSFont.systemFontSize)
+            )
                 .focused($isFocused)
                 .padding()
-                .scrollBounceBehavior(.basedOnSize)
                 .navigationTitle("RichText Editor")
                 .toolbarTitleDisplayMode(.inlineLarge)
                 .toolbar {
                     #if os(iOS)
                     ToolbarItemGroup(placement: .keyboard) {
                         Group {
-                            FormatStyleButtons(text: $text, selection: $selection)
+                            FormatStyleButtons(text: $text, selectedRange: $selectedRange)
                             Spacer()
                             Button {
                                 moreEditing.toggle()
@@ -52,7 +58,7 @@ struct RichTextEditorView: View {
                     }
                     #else
                     ToolbarItemGroup(placement: .primaryAction) {
-                        FormatStyleButtons(text: $text, selection: $selection)
+                        FormatStyleButtons(text: $text, selectedRange: $selectedRange)
                         Button {
                             moreEditing.toggle()
                         } label: {
@@ -63,12 +69,12 @@ struct RichTextEditorView: View {
                 }
                 #if os(iOS)
                 .sheet(isPresented: $moreEditing) {
-                    MoreFormattingView(text: $text, selection: $selection)
+                    MoreFormattingView(text: $text, selectedRange: $selectedRange)
                         .presentationDetents([.height(200)])
                 }
                 #else
                 .popover(isPresented: $moreEditing) {
-                    MoreFormattingView(text: $text, selection: $selection)
+                    MoreFormattingView(text: $text, selectedRange: $selectedRange)
                         .frame(width: 400, height: 250)
                 }
                 #endif
