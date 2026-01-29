@@ -745,6 +745,19 @@ struct NotesSidebarView: View {
                                         Label(note.isPinned ? langManager.translate("unpin_note") : langManager.translate("pin_note"), systemImage: note.isPinned ? "pin.slash" : "pin")
                                     }
                                     
+                                    Button {
+                                        // Open in new tab logic
+                                        // For now, we rely on the App structure handling a generic new window which restores state or we use a URL scheme
+                                        // Since we can't easily force "New Tab" vs "New Window" without App modification, 
+                                        // we will trigger a URL that the app can intercept to open a new window (which becomes a tab based on system prefs)
+                                        if let id = note.id {
+                                            let url = URL(string: "scr4tch://open-note/\(id)")!
+                                            NSWorkspace.shared.open(url)
+                                        }
+                                    } label: {
+                                        Label("Open in New Tab", systemImage: "plus.rectangle.on.rectangle")
+                                    }
+                                    
                                     Button(role: .destructive) {
                                         onDelete(note)
                                     } label: {

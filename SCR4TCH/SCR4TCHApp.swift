@@ -56,8 +56,16 @@ struct SCR4TCHApp: App {
             // Remove "New Window" (File > New)
             CommandGroup(replacing: .newItem) {}
 
-            // Remove Window Sizing (Minimize/Zoom/Tabs controls often grouped here or windowList)
+            // Remove Window Sizing
             CommandGroup(replacing: .windowSize) {}
+            
+            CommandMenu("View") {
+                Button("Add New Tab") {
+                    // Trigger system "New Tab" action
+                    NSApp.sendAction(Selector("newWindowForTab:"), to: nil, from: nil)
+                }
+                .keyboardShortcut("t", modifiers: .command) 
+            }
         }
     }
 }
