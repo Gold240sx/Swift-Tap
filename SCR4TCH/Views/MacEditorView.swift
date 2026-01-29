@@ -179,7 +179,11 @@ class DynamicSizeTextView: NSTextView {
         size.height += verticalInset
 
         // Ensure some minimum height
-        size.height = max(size.height, (font?.pointSize ?? 13) + verticalInset)
+        // Instead of fixing to the base font size, we layoutManager's usedRect usually covers it.
+        // But if empty, we might need a minimum.
+        if string.isEmpty {
+             size.height = max(size.height, (font?.pointSize ?? 13) + verticalInset)
+        }
 
         // CRITICAL: Return no intrinsic width to allow SwiftUI to constrain it
         size.width = NSView.noIntrinsicMetric

@@ -82,6 +82,15 @@ struct NotesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
             sheetPresented = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openNote)) { notification in
+            if let uuid = notification.object as? UUID {
+                // Fetch note by ID
+                let descriptor = FetchDescriptor<RichTextNote>(predicate: #Predicate { $0.id == uuid })
+                if let note = try? context.fetch(descriptor).first {
+                     selectedNote = note
+                }
+            }
+        }
     }
 
     private func createNewNote() {

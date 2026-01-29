@@ -15,6 +15,9 @@
 // Copyright © 2025 CreaTECH Solutions. All rights reserved.
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum SelectionState {
     enum ToggleState {
@@ -56,21 +59,88 @@ enum SelectionState {
         let containers = selectedAttributeContainers(text: text, selection: &selection)
 
         func collapsed(_ values: [Bool]) -> ToggleState {
-            return values.allSatisfy { $0 } ? .on : .off
+            return !values.isEmpty && values.allSatisfy { $0 } ? .on : .off
         }
 
         let boldValues: [Bool] = containers.map { resolveTraits($0.font ?? .default).isBold }
         let italicValues: [Bool] = containers.map { resolveTraits($0.font ?? .default).isItalic }
         let underlineValues: [Bool] = containers.map { $0.underlineStyle == .single }
         let strikeValues: [Bool] = containers.map { $0.strikethroughStyle == .single }
-        let leftAlignmentValues: [Bool] = containers.map { $0.alignment == .left}
-        let centerAlignmentValues: [Bool] = containers.map { $0.alignment == .center}
-        let rightAlignmentValues: [Bool] = containers.map { $0.alignment == .right}
-        let extraLargeFontValues: [Bool] = containers.map { $0.font == .title}
-        let largeFontValues: [Bool] = containers.map { $0.font == .title2}
-        let mediumlineFontValues: [Bool] = containers.map { $0.font == .title3}
-        let bodyFontValues: [Bool] = containers.map { $0.font == .body}
-        let footnoteFontValues: [Bool] = containers.map { $0.font == .footnote}
+        
+        // Alignment (Checking ParagraphStyle)
+        // Accessing AppKit attributes for NSParagraphStyle
+        let leftAlignmentValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let style = $0[AttributeScopes.AppKitAttributes.ParagraphStyleAttribute.self] {
+                return style.alignment == .left
+            }
+            #endif
+            return false 
+        }
+        let centerAlignmentValues: [Bool] = containers.map {
+            #if os(macOS)
+             if let style = $0[AttributeScopes.AppKitAttributes.ParagraphStyleAttribute.self] {
+                return style.alignment == .center
+            }
+            #endif
+            return false
+        }
+        let rightAlignmentValues: [Bool] = containers.map {
+            #if os(macOS)
+             if let style = $0[AttributeScopes.AppKitAttributes.ParagraphStyleAttribute.self] {
+                return style.alignment == .right
+            }
+            #endif
+            return false
+        }
+        
+        // Font Size Checks
+        // We check for both SwiftUI Font (semantic) AND NSFont (point size)
+        
+        let extraLargeFontValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let nsFont = $0[AttributeScopes.AppKitAttributes.FontAttribute.self] {
+                return abs(nsFont.pointSize - 34) < 0.5
+            }
+            #endif
+            return $0.font == .title
+        }
+        
+        let largeFontValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let nsFont = $0[AttributeScopes.AppKitAttributes.FontAttribute.self] {
+                 return abs(nsFont.pointSize - 28) < 0.5
+            }
+            #endif
+            return $0.font == .title2
+        }
+        
+        let mediumFontValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let nsFont = $0[AttributeScopes.AppKitAttributes.FontAttribute.self] {
+                 return abs(nsFont.pointSize - 22) < 0.5
+            }
+            #endif
+            return $0.font == .title3
+        }
+        
+        let bodyFontValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let nsFont = $0[AttributeScopes.AppKitAttributes.FontAttribute.self] {
+                 return abs(nsFont.pointSize - NSFont.systemFontSize) < 0.5
+            }
+            #endif
+            return $0.font == .body
+        }
+        
+        let footnoteFontValues: [Bool] = containers.map {
+            #if os(macOS)
+            if let nsFont = $0[AttributeScopes.AppKitAttributes.FontAttribute.self] {
+                return abs(nsFont.pointSize - 13) < 0.5
+            }
+            #endif
+            return $0.font == .footnote
+        }
        
         return (
             bold: collapsed(boldValues),
@@ -82,7 +152,7 @@ enum SelectionState {
             rightAlignment: collapsed(rightAlignmentValues),
             extraLargeFont: collapsed(extraLargeFontValues),
             largeFont: collapsed(largeFontValues),
-            mediumFont: collapsed(mediumlineFontValues),
+            mediumFont: collapsed(mediumFontValues),
             bodyFont: collapsed(bodyFontValues),
             footnoteFont: collapsed(footnoteFontValues)
         )
